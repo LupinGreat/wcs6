@@ -1,1 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Our Classroom</title>
+<style>
+  :root{--bg:#f4f6fb;--card:#fff;--ink:#1f2937;--muted:#6b7280;--brand:#4f46e5;--brand2:#eef2ff;--ok:#16a34a;--bad:#dc2626;--line:#e5e7eb}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45}
+  header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--brand);color:#fff}
+  main{max-width:720px;margin:0 auto;padding:16px 16px 100px}
+  nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);overflow-x:auto}
+  nav button{flex:1 0 auto;position:relative;border:0;border-radius:0;margin:0;background:none;padding:8px 8px;font-size:12px;line-height:1.2;color:var(--muted);cursor:pointer;white-space:nowrap}
+  nav .ni{display:block;font-size:19px}
+  .badge{position:absolute;top:2px;left:calc(50% + 6px);background:var(--bad);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;min-width:18px;line-height:18px}
+  nav button.on{color:var(--brand);font-weight:700;background:var(--brand2)}
+  h2{margin:8px 0 12px} h3{margin:0 0 6px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .card.done{opacity:.6}
+  .txt{white-space:pre-wrap;word-break:break-word}
+  .muted{color:var(--muted)} .err{color:var(--bad)}
+  .chip{display:inline-block;background:var(--brand2);color:var(--brand);border-radius:999px;padding:2px 10px;font-size:13px;margin:0 6px 6px 0}
+  .code{font-family:ui-monospace,Menlo,monospace;font-size:18px;letter-spacing:2px;font-weight:700}
+  input,textarea,select{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;margin:4px 0 10px;background:#fff}
+  textarea{min-height:90px}
+  button,.btn{display:inline-block;background:var(--brand);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer;text-decoration:none;margin:4px 6px 4px 0}
+  button.ghost{background:transparent;color:inherit;border:1px solid currentColor;padding:6px 12px}
+  button.grey{background:#e5e7eb;color:var(--ink)} button.red{background:var(--bad)}
+  label{font-size:14px;color:var(--muted)}
+  .login{max-width:380px;margin:12vh auto 0;padding:20px;text-align:center}
+  .login h1{margin:0 0 4px} .login input{text-align:center;font-size:22px;letter-spacing:3px;text-transform:uppercase}
+  .login details input{font-size:16px;letter-spacing:0;text-transform:none}
+  .login button{width:100%}
+  details{margin-top:24px;text-align:left} summary{cursor:pointer;color:var(--muted);text-align:center}
+  .checks label{display:flex;gap:8px;align-items:center;color:var(--ink);margin:2px 0}
+  .checks input{width:auto;margin:0}
+  .card.off{opacity:.55}
+  label.upl{display:inline-block;background:#e5e7eb;color:var(--ink);border-radius:10px;padding:10px 16px;cursor:pointer;margin:4px 6px 4px 0;font-size:16px}
+  .thumbwrap{display:inline-block;width:46%;max-width:200px;margin:4px 8px 8px 0;font-size:12px;color:var(--muted);text-decoration:none;vertical-align:top}
+  .thumb{width:100%;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;background:#eee}
+  .thumbwrap span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .frow{display:flex;align-items:center;gap:6px;margin:2px 0}
+  .frow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .frow button{margin:0;padding:6px 10px}
+  details.box{margin-top:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2px 14px 6px;margin-bottom:10px}
+  details.box>summary{cursor:pointer;font-weight:700;padding:12px 0;color:var(--ink);text-align:left}
+  details.box[open]>summary{border-bottom:1px solid var(--line);margin-bottom:10px}
+  .lrow{display:flex;gap:6px;align-items:center}
+  .lrow input{width:auto;min-width:0;margin:4px 0}
+  .lrow input:nth-child(1){flex:1} .lrow input:nth-child(2){flex:2} .lrow button{margin:0}
+  button.ok{background:var(--ok)}
+  details.box:not([open])>summary::after{content:"Click to expand";float:right;font-weight:400;font-size:13px;color:var(--muted)}
+  .fmtbar{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .fmtbar button{margin:0;padding:4px 14px;background:#e5e7eb;color:var(--ink)}
+  .fmtbar span{font-size:12px;color:var(--muted)}
+  .fmtbar+textarea{margin-top:4px}
+  .moods{display:flex;gap:10px;margin:4px 0 12px}
+  .moods label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:30px;line-height:1;color:var(--ink);cursor:pointer;padding:6px 10px;border:2px solid var(--line);border-radius:12px;background:#fff}
+  .moods label small{font-size:12px;color:var(--muted)}
+  .moods input{width:auto;margin:0}
+  .moods label:has(input:checked){border-color:var(--brand);background:var(--brand2)}
+  .card.fbnew{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand2)}
+  #alert{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:8px;background:#111827;color:#fff;padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:92%}
+  #alert.show{display:flex}
+  #alert button{margin:0;padding:6px 12px}
+  #toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;z-index:20;max-width:90%}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="alert"></div>
+<div id="toast"></div>
 
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getStorage, ref as sref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+/* ====== PASTE YOUR FIREBASE CONFIG HERE (the same 4 values you used before) ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBtdoMA51BnWNQVf60X0b8oO3EZnKk2RdQ",
+  authDomain: "our-classroom-portal.firebaseapp.com",
+  projectId: "our-classroom-portal",
+  appId: "1:1063523794024:web:acd69190c6672338c88fdd",
+};
+/* ================================================================================== */
+
+/* File uploads need Firebase's paid Storage plan. You are on the free plan, so they are switched off
+   and you share files with links (Google Drive). Set this to true only if you ever enable Storage. */
+const UPLOADS = false;
+
+const root = document.getElementById('root');
+const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [] };
+
+/* ---------- helpers ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+/* text formatting: **bold**  *italic*  __underline__  (typed by the B / I / U buttons) */
+const fmt = s => s
+  .replace(/\*\*([^\s*](?:[^*\n]*[^\s*])?)\*\*/g, '<b>$1</b>')
+  .replace(/__([^\s_](?:[^_\n]*[^\s_])?)__/g, '<u>$1</u>')
+  .replace(/\*([^\s*](?:[^*\n]*[^\s*])?)\*/g, '<i>$1</i>');
+const linkify = t => fmt(esc(t)).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const secs = x => x?.createdAt?.seconds || 0;
+let toastTimer;
+function toast(m, ms = 2600){ const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
+function friendly(e){
+  const c = e?.code || '';
+  if (c.startsWith('storage/')) return c === 'storage/unauthorized' ? 'Upload not allowed. Check the Storage rules (see UPLOADS-SETUP.md).' : 'Upload problem (' + c.slice(8) + ').';
+  if (c.includes('permission')) return 'Not allowed.';
+  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found') || c.includes('invalid-email')) return "That didn't work. Check it and try again.";
+  if (c.includes('email-already-in-use')) return 'That code already exists. Try again.';
+  if (c.includes('network')) return 'No internet connection.';
+  return e?.message || 'Something went wrong.';
+}
+
+/* codes: 6 digits (older 8-letter codes still work) */
+function newCode(){ return String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0'); }
+const fmtCode = c => c.length === 6 ? c.slice(0,3) + ' ' + c.slice(3) : c.slice(0,4) + '-' + c.slice(4);
+const fmtDay = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const normCode = s => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+const codeEmail = c => c.toLowerCase() + '@portal.local';
+
+/* ---------- firebase ---------- */
+if (firebaseConfig.apiKey.startsWith('PASTE')) {
+  root.innerHTML = '<div class="login"><h1>Almost there</h1><p>Open <b>index.html</b> and paste your Firebase config at the top (the block that says PASTE YOUR FIREBASE CONFIG HERE).</p></div>';
+  throw new Error('Firebase config not filled in');
+}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = UPLOADS ? getStorage(app, 'gs://' + (firebaseConfig.storageBucket || firebaseConfig.projectId + '.firebasestorage.app')) : null;
+let secApp = null;
+async function makeAccount(code){
+  /* second app instance so creating a kid's account does not log the teacher out */
+  secApp = secApp || initializeApp(firebaseConfig, 'secondary');
+  const sa = getAuth(secApp);
+  const cred = await createUserWithEmailAndPassword(sa, codeEmail(code), code);
+  const uid = cred.user.uid;
+  await signOut(sa);
+  return uid;
+}
+/* make an account for a code; with no code given, picks a random free 6-digit one */
+async function freshAccount(wanted){
+  for (let n = 0; n < 12; n++) {
+    const code = wanted || newCode();
+    try { return { code, uid: await makeAccount(code) }; }
+    catch(e) { if (e.code === 'auth/email-already-in-use' && !wanted) continue; throw e; }
+  }
+  throw new Error('Could not make a free code. Try again.');
+}
+/* all = true also returns turned-off people (one entry per person) */
+async function getUsers(role, all = false){
+  const s = await getDocs(query(collection(db, 'users'), where('role', '==', role)));
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const list = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.replaced);
+  if (!all) return list.filter(u => u.active).sort(byName);
+  const by = {};
+  list.forEach(u => { const c = by[u.sid]; if (!c || (u.active && !c.active) || (!!u.active === !!c.active && secs(u) > secs(c))) by[u.sid] = u; });
+  return Object.values(by).sort(byName);
+}
+
+/* ---------- file uploads (Firebase Storage) ---------- */
+const ACCEPT = '.pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx';
+const safeName = n => n.replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').slice(-80);
+const isImg = f => (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(f.name || '');
+const fileIcon = f => { const s = (f.type || '') + (f.name || ''); return /pdf/i.test(s) ? '📕' : /word|\.docx?$/i.test(s) ? '📘' : '📄'; };
+async function uploadFiles(fileList, folder, maxMb = 20){
+  const files = [...fileList], out = [];
+  for (let n = 0; n < files.length; n++) {
+    const f = files[n];
+    if (f.size > maxMb * 1048576) { toast(f.name + ' is bigger than ' + maxMb + ' MB'); continue; }
+    toast('Uploading ' + (n + 1) + ' of ' + files.length + '…', 60000);
+    const path = folder + '/' + Date.now() + '-' + n + '-' + safeName(f.name);
+    const r = sref(storage, path);
+    await uploadBytes(r, f, { contentType: f.type || 'application/octet-stream' });
+    out.push({ name: f.name, type: f.type || '', path, url: await getDownloadURL(r) });
+  }
+  if (out.length) toast(out.length + ' uploaded');
+  return out;
+}
+const delFiles = paths => !UPLOADS ? Promise.resolve() : Promise.all((paths || []).filter(Boolean).map(p => deleteObject(sref(storage, p)).catch(() => {})));
+
+/* ---------- text formatting buttons (B / I / U) for every text box ---------- */
+const MARK = { b: '**', i: '*', u: '__' };
+function applyFmt(ta, m){
+  const mk = MARK[m], v = ta.value;
+  let s = ta.selectionStart, e = ta.selectionEnd;
+  while (s < e && /\s/.test(v[s])) s++;
+  while (e > s && /\s/.test(v[e - 1])) e--;
+  const before = v.slice(0, s), sel = v.slice(s, e), after = v.slice(e);
+  let nv, a, z;
+  if (before.endsWith(mk) && after.startsWith(mk) && !(m === 'i' && (before.endsWith('**') || after.startsWith('**')))) {
+    nv = before.slice(0, -mk.length) + sel + after.slice(mk.length); a = s - mk.length; z = a + sel.length;   /* tapped again: remove it */
+  } else {
+    nv = before + mk + sel + mk + after; a = s + mk.length; z = a + sel.length;
+  }
+  ta.value = nv; ta.focus(); ta.setSelectionRange(a, z);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function enhance(scope){
+  scope.querySelectorAll('textarea:not([data-tb]):not([data-nofmt])').forEach(t => {
+    t.dataset.tb = '1';
+    t.insertAdjacentHTML('beforebegin', '<div class="fmtbar"><button type="button" data-a="fmt" data-m="b" title="Bold"><b>B</b></button><button type="button" data-a="fmt" data-m="i" title="Italic"><i>I</i></button><button type="button" data-a="fmt" data-m="u" title="Underline"><u>U</u></button><span>select words, then tap</span></div>');
+  });
+}
+
+/* ---------- feedback alert for the teacher ---------- */
+const MOODS = { great: ['😀', 'Great'], good: ['🙂', 'Good'], okay: ['😐', 'Okay'], hard: ['🙁', 'Hard'] };
+let fbUnsub = null;
+function updateBadge(){
+  const b = document.querySelector('nav button[data-k="feedback"]');
+  if (b && S.role === 'teacher') b.innerHTML = navInner('feedback', '💬 Feedback');
+}
+function showAlert(msg){
+  const el = document.getElementById('alert');
+  el.innerHTML = '<span>📝 ' + esc(msg) + '</span><button data-a="openfb">View</button><button class="ghost" data-a="closealert">✕</button>';
+  el.classList.add('show');
+}
+function stopFbWatch(){ if (fbUnsub) { fbUnsub(); fbUnsub = null; } S.fbNew = 0; document.getElementById('alert').classList.remove('show'); }
+function startFbWatch(){
+  stopFbWatch();
+  let first = true;
+  fbUnsub = onSnapshot(collection(db, 'feedback'), snap => {
+    S.fbNew = snap.docs.filter(d => d.data().status === 'new').length;
+    updateBadge();
+    if (first) { if (S.fbNew) showAlert(S.fbNew + ' unread feedback from subs'); }
+    else {
+      snap.docChanges().forEach(c => { if (c.type === 'added' && !c.doc.metadata.hasPendingWrites) showAlert('New feedback from ' + (c.doc.data().name || 'a sub')); });
+      if (S.tab === 'feedback') show();
+    }
+    first = false;
+  }, err => console.error('feedback watch', err));
+}
+/* images show as small pictures (tap to open full size); other files are buttons. All open in a new tab */
+function filesHtml(files){
+  return (files || []).filter(f => safeUrl(f.url)).map(f => isImg(f)
+    ? `<a class="thumbwrap" href="${esc(f.url)}" target="_blank" rel="noopener"><img class="thumb" loading="lazy" src="${esc(f.url)}" alt=""><span>${esc(f.name)}</span></a>`
+    : `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noopener">${fileIcon(f)} ${esc(f.name)}</a>`).join('');
+}
+function renderPending(kind){
+  const el = document.getElementById('pend-' + kind); if (!el) return;
+  const list = kind === 'work' ? S.pendingWork : S.pendingPrint;
+  el.innerHTML = list.map((f, i) => `<div class="frow"><span>${fileIcon(f)} ${esc(f.name)}</span><button type="button" class="red" data-a="pendrm" data-kind="${kind}" data-i="${i}">✕</button></div>`).join('');
+}
+async function handleUpload(inp){
+  const files = inp.files; if (!files || !files.length) return;
+  const d = inp.dataset;
+  try {
+    if (d.kind === 'box') {
+      const it = ED[d.k][+d.i];
+      const up = await uploadFiles(files, d.k === 'info' ? 'info' : 'plan/' + S.planDate);
+      it.files.push(...up); it.open = true; redraw(d.k);
+    } else if (d.kind === 'work') {
+      S.pendingWork.push(...await uploadFiles(files, 'work')); renderPending('work');
+    } else if (d.kind === 'print') {
+      S.pendingPrint.push(...await uploadFiles(files, 'prints/' + S.user.uid, 10)); renderPending('print');
+    }
+  } catch(err) { toast(friendly(err)); }
+  inp.value = '';
+}
+
+/* ---------- login ---------- */
+function renderLogin(){
+  root.innerHTML = `<div class="login">
+    <h1>📚 Our Classroom</h1>
+    <p class="muted">Type your code to get in</p>
+    <form data-form="code">
+      <input id="code" placeholder="123456" autocomplete="off" inputmode="numeric" required>
+      <button>Go</button>
+    </form>
+    <p class="err">${esc(S.loginMsg)}</p>
+    <details><summary>Teacher login</summary>
+      <form data-form="teacher">
+        <input id="em" type="email" placeholder="Email" autocomplete="username" required>
+        <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required>
+        <button>Log in</button>
+      </form>
+    </details></div>`;
+}
+const FORMS = {
+  async code(f){
+    const c = normCode(f.querySelector('#code').value);
+    S.loginMsg = '';
+    try { await signInWithEmailAndPassword(auth, codeEmail(c), c); }
+    catch(e){ S.loginMsg = friendly(e); renderLogin(); }
+  },
+  async teacher(f){
+    S.loginMsg = '';
+    try { await signInWithEmailAndPassword(auth, f.querySelector('#em').value.trim(), f.querySelector('#pw').value); }
+    catch(e){ S.loginMsg = friendly(e); renderLogin(); }
+  },
+  async addstudents(f){
+    const names = f.querySelector('#names').value.split('\n').map(x => x.trim()).filter(Boolean);
+    for (const name of names){
+      const { code, uid } = await freshAccount();
+      await setDoc(doc(db, 'users', uid), { role: 'student', name, code, sid: uid, active: true, createdAt: serverTimestamp() });
+    }
+    toast(names.length + ' added'); show();
+  },
+  async addsub(f){
+    const name = f.querySelector('#subname').value.trim(); if (!name) return;
+    const wanted = f.querySelector('#subcode').value.trim();
+    if (wanted && !/^\d{6}$/.test(wanted)) return toast('Code must be exactly 6 digits');
+    const { code, uid } = await freshAccount(wanted || null);
+    await setDoc(doc(db, 'users', uid), { role: 'sub', name, code, sid: uid, active: true, createdAt: serverTimestamp() });
+    toast('Sub code created'); show();
+  },
+  async newwork(f){
+    const all = f.querySelector('#toall').checked;
+    const picked = [...f.querySelectorAll('.pick:checked')].map(x => x.value);
+    if (!all && !picked.length) return toast('Choose who it is for');
+    await addDoc(collection(db, 'assignments'), {
+      title: f.querySelector('#wtitle').value.trim(), text: f.querySelector('#wtext').value.trim(),
+      link: f.querySelector('#wlink').value.trim(), due: f.querySelector('#wdue').value, files: S.pendingWork,
+      audience: all ? ['all'] : picked, createdAt: serverTimestamp()
+    });
+    toast('Posted'); show();
+  },
+  async print(f){
+    const url = f.querySelector('#purl').value.trim();
+    if (url && !safeUrl(url)) return toast('A link must start with http');
+    if (!url && !S.pendingPrint.length) retur
