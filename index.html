@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Our Classroom</title>
+<!-- tab icon: the pi symbol (π) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f46e5'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 22h36'/%3E%3Cpath d='M24 22v22c0 4-1 7-4 9'/%3E%3Cpath d='M40 22v20c0 6 2 9 7 9'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+/* same π icon as a PNG, for browsers (Safari, iPhone home screen) that ignore SVG icons */
+(function(){try{
+  function make(size, round){
+    var c = document.createElement('canvas'); c.width = c.height = size; var x = c.getContext('2d'); x.scale(size / 64, size / 64);
+    x.fillStyle = '#4f46e5'; x.beginPath(); if (round && x.roundRect) x.roundRect(0, 0, 64, 64, 14); else x.rect(0, 0, 64, 64); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = 6; x.lineCap = 'round'; x.lineJoin = 'round';
+    ['M14 22h36', 'M24 22v22c0 4-1 7-4 9', 'M40 22v20c0 6 2 9 7 9'].forEach(function(d){ x.stroke(new Path2D(d)); });
+    return c.toDataURL('image/png');
+  }
+  var a = document.createElement('link'); a.rel = 'icon'; a.type = 'image/png'; a.href = make(64, true); document.head.appendChild(a);
+  var b = document.createElement('link'); b.rel = 'apple-touch-icon'; b.href = make(180, false); document.head.appendChild(b);
+}catch(e){}})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- friendly rounded font; loads without blocking the page, so if it is blocked the site just uses the phone's normal font -->
@@ -115,7 +131,10 @@
   .b1{width:340px;height:340px;background:var(--brand);opacity:.55;top:-110px;left:-90px}
   .b2{width:240px;height:240px;background:var(--sun);opacity:.3;bottom:-70px;right:-50px;animation-duration:27s}
   .b3{width:170px;height:170px;background:#22c55e;opacity:.22;top:58%;left:64%;animation-duration:24s}
-  #loginslot{position:relative;z-index:1}
+  #loginslot{position:relative;z-index:1;margin:auto 0;padding:10px 0}
+  .login-wrap{flex-direction:column;justify-content:flex-start}
+  .copy{text-align:center;font-size:13px;color:var(--muted);padding:20px 0 4px}
+  .login-copy{position:relative;z-index:1;color:rgba(255,255,255,.7);padding:6px 0 2px}
   .login{width:min(92vw,380px);margin:0;padding:30px 24px 22px;background:#fff;border-radius:26px;box-shadow:0 24px 60px rgba(0,0,0,.4)}
   .logo{width:68px;height:68px;margin:0 auto 10px;border-radius:20px;background:var(--brand2);display:flex;align-items:center;justify-content:center;font-size:36px}
   .login h1{font-weight:800;font-size:27px;letter-spacing:-.02em}
@@ -173,6 +192,17 @@
   @keyframes wave{0%,100%{transform:rotate(0)}15%{transform:rotate(16deg)}30%{transform:rotate(-8deg)}45%{transform:rotate(14deg)}60%{transform:rotate(-4deg)}75%{transform:rotate(10deg)}}
   @keyframes dropin{from{opacity:0;transform:translate(-50%,-22px)}to{opacity:1;transform:translate(-50%,0)}}
   @keyframes cf{from{opacity:1;transform:translate(0,0) rotate(0)}to{opacity:0;transform:translate(var(--dx),calc(var(--dy) + 70px)) rotate(var(--r))}}
+  /* login: help panel */
+  .helpbtn{width:100%;margin:14px 0 0}
+  #helppanel{margin-top:12px;text-align:left}
+  #helppanel:not([hidden]){animation:rise .35s var(--ease) both}
+  .login .helpform label{display:block;font-weight:700;font-size:14px;color:var(--ink);margin-top:6px}
+  .login .helpform input,.login .helpform select,.login .helpform textarea{font-size:16px;letter-spacing:0;font-weight:600;text-align:left;text-transform:none}
+  .login .helpform .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+  .login .helpform button{width:100%}
+  .helpres{margin:8px 0 0;font-size:14px;font-weight:700;min-height:20px}
+  .helpres.ok{color:var(--ok)} .helpres.no{color:var(--bad)}
+
   /* login: show/hide eye, error + info lines */
   .pwrap{position:relative}
   .pwrap input{padding-left:52px;padding-right:52px}
@@ -240,14 +270,18 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, si
 import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getStorage, ref as sref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-/* ====== PASTE YOUR FIREBASE CONFIG HERE (the same 4 values you used before) ====== */
+/* ====== FIREBASE CONFIG (already filled in for our-classroom-portal) ====== */
 const firebaseConfig = {
-   apiKey: "AIzaSyBtdoMA51BnWNQVf60X0b8oO3EZnKk2RdQ",
+  apiKey: "AIzaSyBtdoMA51BnWNQVf60X0b8oO3EZnKk2RdQ",
   authDomain: "our-classroom-portal.firebaseapp.com",
   projectId: "our-classroom-portal",
-  appId: "1:1063523794024:web:acd69190c6672338c88fdd",
+  appId: "1:1063523794024:web:acd69190c6672338c88fdd"
 };
-/* ================================================================================== */
+/* ========================================================================== */
+
+/* Login "Help" button: messages are emailed to the teacher through Web3Forms (free).
+   One-time setup: get your free access key at web3forms.com and paste it between the quotes. */
+const HELP_ACCESS_KEY = "PASTE_WEB3FORMS_KEY";
 
 /* File uploads need Firebase's paid Storage plan. You are on the free plan, so they are switched off
    and you share files with links (Google Drive). Set this to true only if you ever enable Storage. */
@@ -524,7 +558,7 @@ function renderLogin(){
   S.loginEnter = false;
   root.classList.remove('out');
   const keep = S.loginMsg ? (S.keep || {}) : {};
-  if (!root.querySelector('.login-wrap')) root.innerHTML = '<div class="login-wrap"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><div id="loginslot"></div></div>';
+  if (!root.querySelector('.login-wrap')) root.innerHTML = '<div class="login-wrap"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><div id="loginslot"></div><footer class="copy login-copy">© 2026 Mr. D. All rights reserved.</footer></div>';
   root.querySelector('#loginslot').innerHTML = `<div class="login ${cls}">
     <div class="logo">📚</div>
     <h1>Our Classroom</h1>
@@ -541,7 +575,20 @@ function renderLogin(){
         <div class="pwrap"><input id="pw" type="password" placeholder="Password" autocomplete="current-password" required>${EYE_BTN}</div>
         <button>Log in</button>
       </form>
-    </details></div>`;
+    </details>
+    <button type="button" class="grey helpbtn" data-a="helptoggle" data-nobusy>❓ Help</button>
+    <div id="helppanel" hidden>
+      <form data-form="help" class="helpform" autocomplete="off">
+        <p class="muted" style="margin:0 0 4px">Tell us what is going wrong with logging in. Please do not type your code here.</p>
+        <label for="hname">Your name</label><input id="hname" maxlength="60" placeholder="Your name (and class)" required>
+        <label for="htype">What is the problem?</label>
+        <select id="htype"><option>My code does not work</option><option>I forgot my code</option><option>I am a sub and cannot get in</option><option>The page will not load</option><option>Something else</option></select>
+        <label for="hmsg">Tell us more</label><textarea id="hmsg" data-nofmt maxlength="800" required minlength="5" style="min-height:80px" placeholder="What happens when you try to log in?"></textarea>
+        <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button>Send help request</button>
+        <p class="helpres" role="status"></p>
+      </form>
+    </div></div>`;
 }
 const FORMS = {
   async code(f){
@@ -559,6 +606,28 @@ const FORMS = {
     store.set(Date.now());
     try { await signInWithEmailAndPassword(auth, em, f.querySelector('#pw').value); }
     catch(e){ S.fresh = false; loginError(loginMsgFor(e, 'teacher'), 'teacher'); }
+  },
+  async help(f){
+    const res = f.querySelector('.helpres'), say = (t, ok) => { res.textContent = t; res.className = 'helpres ' + (ok ? 'ok' : 'no'); };
+    if (f.querySelector('.hp').value) return;   /* a robot filled the hidden box */
+    if (HELP_ACCESS_KEY.startsWith('PASTE')) return say('Help is not switched on yet. Please tell your teacher in person.', false);
+    let last = 0; try { last = +localStorage.getItem('classroom-help-last') || 0; } catch(e) {}
+    if (Date.now() - last < 60000) return say('Your message was just sent. Please wait a minute before sending another.', false);
+    const name = f.querySelector('#hname').value.trim(), type = f.querySelector('#htype').value, message = f.querySelector('#hmsg').value.trim();
+    if (!name || message.length < 5) return say('Please add your name and tell us a bit more.', false);
+    say('', true);
+    try {
+      const r = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ access_key: HELP_ACCESS_KEY, subject: 'Classroom website: login help (' + type + ')', name, problem: type, message,
+          sent_at: new Date().toLocaleString(), device: navigator.userAgent.slice(0, 140), botcheck: false })
+      });
+      let j = {}; try { j = await r.json(); } catch(e) {}
+      if (!r.ok || j.success === false) throw new Error('send failed');
+    } catch(e) { return say('Could not send. The school network may be blocking it. Please tell your teacher in person.', false); }
+    try { localStorage.setItem('classroom-help-last', String(Date.now())); } catch(e) {}
+    f.querySelector('#hname').value = ''; f.querySelector('#hmsg').value = '';
+    say('Sent! Your teacher will get your message.', true);
   },
   async addstudents(f){
     const names = f.querySelector('#names').value.split('\n').map(x => x.trim()).filter(Boolean);
@@ -665,6 +734,11 @@ const personCard = u => `<div class="card ${u.active ? '' : 'off'}"><h3>${esc(u.
 const ACTIONS = {
   tab: b => { S.fbSent = false; S.tab = b.dataset.k; show(); },
   stay: () => markActive(),
+  helptoggle: b => {
+    const p = document.getElementById('helppanel'); p.hidden = !p.hidden;
+    b.textContent = p.hidden ? '❓ Help' : '✕ Close help';
+    if (!p.hidden) setTimeout(() => p.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+  },
   eye: b => {
     const inp = b.closest('.pwrap').querySelector('input'), reveal = inp.type === 'password';
     inp.type = reveal ? 'text' : 'password';
@@ -792,16 +866,17 @@ const TABS = {
   sub: [['day', '📅 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
 };
 const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${S.role === 'teacher' && k === 'feedback' && S.fbNew ? `<span class="badge">${S.fbNew}</span>` : ''}`; };
+const FOOT = '<footer class="copy">© 2026 Mr. D. All rights reserved.</footer>';
 function shell(content){
   const nav = root.querySelector('nav');
   if (nav && root.dataset.role === S.role) {
     /* the header and bottom tabs stay put; only the page content and the highlighted tab change */
-    root.querySelector('main').innerHTML = content;
+    root.querySelector('main').innerHTML = content + FOOT;
     nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tab));
   } else {
     root.dataset.role = S.role;
     root.innerHTML = `<header><b>${esc(S.profile.name)}</b><button class="ghost" data-a="logout" data-nobusy>Log out</button></header>
-      <main>${content}</main>
+      <main>${content}${FOOT}</main>
       <nav>${TABS[S.role].map(([k, l]) => `<button data-a="tab" data-k="${k}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav>`;
   }
   enhance(root);
@@ -919,12 +994,14 @@ const VIEWS = {
     const nNew = list.filter(x => x.status === 'new').length;
     return `<h2>Sub reports</h2><p class="muted" style="margin-top:-6px">${list.length} total · ${nNew} unread</p>${nNew ? '<button class="grey" data-a="fbreadall">Mark all read</button>' : ''}
       ${list.map(x => {
-        const r = RATINGS[x.rating || OLD_MOODS[x.mood]], cons = x.concerns || [], nCons = cons.length || (x.problems ? 1 : 0);
-        return `<details class="box ${x.status === 'new' ? 'fbnew' : ''}" ${x.status === 'new' ? 'open' : ''}>
+        const r = RATINGS[x.rating || OLD_MOODS[x.mood]], cons = Array.isArray(x.concerns) ? x.concerns : [], nCons = cons.length || (x.problems ? 1 : 0);
+        const parts = sec('Student concerns', cons.map(c => `<div class="concern"><b>${esc(c.student || 'Student')}</b>${txt(c.note)}</div>`).join('') + (x.problems ? `<div class="concern">${txt(x.problems)}</div>` : ''))
+          + sec('Students who did well', txt(x.shoutouts)) + sec('What went well', txt(x.good)) + sec('Suggestions', txt(x.suggest)) + sec('Requested plan changes', txt(x.planchange));
+        /* every report stays open so its details are always visible (tap the title to fold one away) */
+        return `<details class="box ${x.status === 'new' ? 'fbnew' : ''}" open>
           <summary>${esc(x.name || 'Sub')} · ${esc(x.date ? fmtDay(x.date) : '')}${x.status === 'new' ? ' <span class="chip">New</span>' : ''}</summary>
           <div class="pills">${r ? `<span class="pill ${r[1]}">${r[0]}</span>` : ''}${PLAN_FOLLOW[x.planfollow] ? `<span class="pill">${PLAN_FOLLOW[x.planfollow]}</span>` : ''}${nCons ? `<span class="pill r">${nCons} concern${nCons > 1 ? 's' : ''}</span>` : ''}${x.planchange ? '<span class="pill y">Plan change requested</span>' : ''}</div>
-          ${sec('Student concerns', cons.map(c => `<div class="concern"><b>${esc(c.student || 'Student')}</b>${txt(c.note)}</div>`).join('') + (x.problems ? `<div class="concern">${txt(x.problems)}</div>` : ''))}
-          ${sec('Students who did well', txt(x.shoutouts))}${sec('What went well', txt(x.good))}${sec('Suggestions', txt(x.suggest))}${sec('Requested plan changes', txt(x.planchange))}
+          ${parts || '<p class="muted">No written notes were added.</p>'}
           ${x.status === 'new' ? `<button data-a="fbread" data-id="${x.id}">Mark read</button>` : ''}<button class="red" data-a="fbdel" data-id="${x.id}">Delete</button></details>`; }).join('') || '<p class="muted">No reports yet.</p>'}`;
   },
   'teacher:board': async () => {
