@@ -374,7 +374,7 @@ const HELP_ACCESS_KEY = "e9f55ced-6dd6-4b20-be9f-00e3b45beade";
 const UPLOADS = false;
 
 const root = document.getElementById('root');
-const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0 };
+const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false };
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- helpers ---------- */
@@ -919,7 +919,7 @@ const ACTIONS = {
   },
   mode: () => {   /* the owner switches between the admin panel and their own classroom */
     S.role = S.role === 'admin' ? 'teacher' : 'admin';
-    S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false;
+    S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {};
     if (S.role === 'teacher') startFbWatch(); else startAdminWatch();
     show();
   },
@@ -1049,6 +1049,7 @@ document.addEventListener('click', e => {
   if (s && !s.parentElement.open) { const d = s.parentElement; d.classList.add('opening'); setTimeout(() => d.classList.remove('opening'), 320); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   let p; try { p = Promise.resolve(ACTIONS[b.dataset.a]?.(b)); } catch(err) { p = Promise.reject(err); }
+  if (b.dataset.a !== 'tab') S.cache = {};   /* anything but switching tabs may change data: forget the saved copies */
   busy(b, p).catch(err => toast(friendly(err)));
 });
 document.addEventListener('keydown', e => {
@@ -1060,12 +1061,13 @@ document.addEventListener('keydown', e => {
 document.addEventListener('submit', e => {
   const f = e.target; if (!f.dataset.form) return;
   e.preventDefault();
+  S.cache = {};
   const sb = e.submitter || f.querySelector('button:not([type=button])');
   const p = (async () => FORMS[f.dataset.form]?.(f))();
   (sb ? busy(sb, p) : p).catch(err => toast(friendly(err)));
 });
 document.addEventListener('input', e => {
-  const t = e.target;
+  const t = e.target; S.dirty = true;
   if (t.closest('.login')) { t.classList.remove('bad'); const er = root.querySelector('.login .err'); if (er) er.textContent = ''; }   /* typing again clears the error */
   if (!t.dataset.ed) return;
   const b = ED[t.dataset.ed]?.[+t.dataset.i]; if (!b) return;
@@ -1116,19 +1118,26 @@ function shell(content){
 }
 async function show(){
   const my = ++S.rid, key = S.role + ':' + S.tab, fresh = S.shown !== key;
-  if (fresh) { shell('<div class="skel"></div><div class="skel"></div><div class="skel s2"></div>'); window.scrollTo(0, 0); }
+  /* opening a tab again shows what it had last time at once, then quietly swaps in the fresh data */
+  const cached = fresh && CACHEABLE.has(key) ? S.cache[key] : undefined;
+  const animate = () => { const m = root.querySelector('main'); m.classList.remove('view-in'); void m.offsetWidth; m.classList.add('view-in'); clearTimeout(S.vt); S.vt = setTimeout(() => m.classList.remove('view-in'), 900); };
+  if (fresh) { shell(cached !== undefined ? cached : '<div class="skel"></div><div class="skel"></div><div class="skel s2"></div>'); window.scrollTo(0, 0); S.dirty = false; if (cached !== undefined) { S.shown = key; animate(); } }
   let html;
   try { html = await VIEWS[key](); }
   catch(e){ console.error(e); html = (String(e?.code || '').includes('permission') && (S.role === 'student' || S.role === 'sub')) ? '<div class="card"><h3>Class paused</h3><p class="muted">This class is not available right now. Please tell your teacher.</p></div>' : '<p class="err">' + esc(friendly(e)) + '</p>'; }
   if (my !== S.rid) return;   /* a newer click already took over */
+  if (CACHEABLE.has(key)) S.cache[key] = html;
+  if (cached !== undefined) {
+    /* the old copy is already on screen: swap only if something changed, and never while the person is typing */
+    if (html !== cached && !S.dirty) shell(html);
+    return;
+  }
   shell(html);
   S.shown = key;
-  if (fresh) {
-    const m = root.querySelector('main');
-    m.classList.remove('view-in'); void m.offsetWidth; m.classList.add('view-in');
-    clearTimeout(S.vt); S.vt = setTimeout(() => m.classList.remove('view-in'), 900);
-  }
+  if (fresh) animate();
 }
+/* tabs that only show saved data (the editors and blank forms are always loaded fresh) */
+const CACHEABLE = new Set(['student:home', 'student:work', 'student:print', 'teacher:students', 'teacher:work', 'teacher:print', 'teacher:feedback', 'teacher:board', 'teacher:plan', 'sub:day', 'sub:info', 'admin:teachers', 'admin:pay', 'admin:settings']);
 
 /* ---------- student views ---------- */
 async function myWork(){
@@ -1403,7 +1412,7 @@ function renderGate(kind){
     <button class="grey" data-a="logout" data-nobusy style="margin-top:8px">Log out</button></div>`;
 }
 async function enter(user){
-  lastActive = Date.now(); lastSaved = lastActive; store.set(lastActive); S.idleOut = false; S.user = user;
+  lastActive = Date.now(); lastSaved = lastActive; store.set(lastActive); S.idleOut = false; S.user = user; S.cache = {};
   let snap = null;
   try { snap = await getDoc(doc(db, 'users', user.uid)); } catch(e) { /* no profile */ }
   let p = snap && snap.exists() ? snap.data() : null;
@@ -1435,7 +1444,7 @@ async function enter(user){
 }
 onAuthStateChanged(auth, async user => {
   if (S.signingUp) return;   /* the sign-up form finishes the job itself */
-  if (!user) { stopFbWatch(); hideIdleWarn(); S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
+  if (!user) { stopFbWatch(); hideIdleWarn(); S.cache = {}; S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
   if (!S.fresh) {   /* a saved session from an earlier visit: only keep it if it was used in the last 15 minutes */
     const last = store.get();
     if (last && Date.now() - last > IDLE_MS) { S.loginNote = 'You were logged out after 15 minutes of no activity.'; await signOut(auth); return; }
