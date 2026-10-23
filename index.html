@@ -20,6 +20,68 @@
   var b = document.createElement('link'); b.rel = 'apple-touch-icon'; b.href = make(180, false); document.head.appendChild(b);
 }catch(e){}})();
 </script>
+<meta name="theme-color" content="#4f46e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Classroom">
+<script>
+/* ---- Install-the-app pop-up ----
+   Never shown if the app is already installed (opened from the home screen) or was just installed.
+   Closing it with ✕ hides it for 7 days. If nobody touches it, it disappears by itself after 5 minutes. */
+(function(){
+  var KEY = 'classroom-install-dismissed', WEEK = 7 * 864e5, SHOW_MS = 5 * 60 * 1000;
+  function get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (standalone) { set('classroom-installed', '1'); return; }
+
+  /* a manifest (built here so the site stays one file) makes the browser offer "Install" */
+  try{
+    function icon(size){
+      var c = document.createElement('canvas'); c.width = c.height = size; var x = c.getContext('2d'); x.scale(size / 64, size / 64);
+      x.fillStyle = '#4f46e5'; x.fillRect(0, 0, 64, 64);
+      x.strokeStyle = '#fff'; x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round';
+      ['M16 24h32', 'M25 24v19c0 3-1 6-3 8', 'M39 24v17c0 5 2 8 6 8'].forEach(function(d){ x.stroke(new Path2D(d)); });
+      return c.toDataURL('image/png');
+    }
+    var m = { name: 'Our Classroom', short_name: 'Classroom', start_url: location.origin + location.pathname, scope: location.origin + '/',
+      display: 'standalone', background_color: '#4f46e5', theme_color: '#4f46e5',
+      icons: [{ src: icon(192), sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: icon(512), sizes: '512x512', type: 'image/png', purpose: 'any' }] };
+    var l = document.createElement('link'); l.rel = 'manifest';
+    l.href = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
+    document.head.appendChild(l);
+  }catch(e){}
+
+  var deferred = null, shown = false, timer = null;
+  var ua = navigator.userAgent || '';
+  var iOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var safariIOS = iOS && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+
+  function recentlyClosed(){ var t = +get(KEY) || 0; return t && Date.now() - t < WEEK; }
+  function hide(){ var el = document.getElementById('install'); if (el) el.classList.remove('on'); clearTimeout(timer); shown = false; }
+  function show(){
+    if (shown || recentlyClosed() || get('classroom-installed')) return;
+    var el = document.getElementById('install'); if (!el) return;
+    var how = deferred
+      ? '<button type="button" class="ibtn" id="instgo">Install</button>'
+      : '<div class="ihow">Tap <b>Share</b> <span class="ishare">⎋</span> then <b>Add to Home Screen</b>.</div>';
+    el.innerHTML = '<div class="icard"><div class="iico">π</div><div class="itxt"><b>Get the Classroom app</b><span>Open it like an app, right from your home screen.</span>' + how + '</div><button type="button" class="iclose" aria-label="Close">✕</button></div>';
+    el.querySelector('.iclose').onclick = function(){ set(KEY, String(Date.now())); hide(); };
+    var go = el.querySelector('#instgo');
+    if (go) go.onclick = function(){
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.then(function(r){ if (r && r.outcome === 'accepted') set('classroom-installed', '1'); else set(KEY, String(Date.now())); deferred = null; hide(); });
+    };
+    el.classList.add('on'); shown = true;
+    timer = setTimeout(hide, SHOW_MS);   /* no action for 5 minutes: it goes away (comes back next visit) */
+  }
+
+  window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); deferred = e; setTimeout(show, 2500); });
+  window.addEventListener('appinstalled', function(){ set('classroom-installed', '1'); deferred = null; hide(); });
+  window.addEventListener('load', function(){ if (safariIOS) setTimeout(show, 2500); });
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- friendly rounded font; loads without blocking the page, so if it is blocked the site just uses the phone's normal font -->
@@ -254,6 +316,29 @@
   .fsum h4{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
   .concern{border-left:3px solid #f87171;padding:2px 0 2px 10px;margin:6px 0}
 
+  /* teachers, plans and payments */
+  header .hl{display:flex;align-items:center;gap:10px;min-width:0} header .hl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  header .hr{display:flex;gap:6px;flex:0 0 auto}
+  header button.plan-chip{border-radius:999px;padding:4px 12px;font-size:13px;background:rgba(255,255,255,.2);color:#fff;white-space:nowrap}
+  header button.plan-chip.y{background:#fde68a;color:#78350f} header button.plan-chip.r{background:#fecaca;color:#7f1d1d}
+  .plancard{display:flex;align-items:center;gap:16px} .bigdays{font-size:44px;font-weight:800;line-height:1;color:var(--brand);min-width:64px;text-align:center}
+  .plancard.soon .bigdays{color:#b45309} .plancard.ended .bigdays{color:var(--bad)}
+  .steps{padding-left:20px;margin:6px 0 10px} .steps li{margin-bottom:10px}
+  .refbox{font:800 26px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:2px;background:var(--brand2);color:var(--brand);border-radius:12px;padding:12px;text-align:center;margin:8px 0}
+  .waitnote{background:#fef3c7;color:#92400e;border-radius:10px;padding:10px 12px;font-weight:700}
+  .login .helpform .pwrap input{text-align:left;padding-right:56px}
+  .login .helpform .pwrap button.eye{width:44px;top:4px;bottom:4px}
+  /* install pop-up */
+  #install{position:fixed;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:9000;display:flex;justify-content:center;padding:0 12px;pointer-events:none;transform:translateY(30px);opacity:0;visibility:hidden;transition:transform .4s var(--ease),opacity .4s var(--ease),visibility 0s .4s}
+  #install.on{transform:none;opacity:1;visibility:visible;transition:transform .4s var(--ease),opacity .4s var(--ease)}
+  .icard{pointer-events:auto;display:flex;gap:12px;align-items:flex-start;max-width:420px;width:100%;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 12px 12px 14px;box-shadow:0 10px 30px rgba(31,41,55,.22)}
+  .iico{flex:0 0 auto;width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font:700 26px Georgia,serif}
+  .itxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:14px}
+  .itxt span{color:var(--muted);font-size:13px}
+  .ibtn{align-self:flex-start;margin:8px 0 0;padding:8px 18px;border:0;border-radius:10px;background:var(--brand);color:#fff;font-weight:600;cursor:pointer}
+  .ihow{margin-top:6px;font-size:13px}
+  .ishare{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 5px}
+  .iclose{flex:0 0 auto;border:0;background:#f3f4f6;color:var(--muted);width:30px;height:30px;border-radius:50%;margin:0;padding:0;cursor:pointer;font-size:14px}
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:.01ms!important}
   }
@@ -261,13 +346,14 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="install"></div>
 <div id="alert"></div>
 <div id="toast"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getStorage, ref as sref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 /* ====== FIREBASE CONFIG (already filled in for our-classroom-portal) ====== */
@@ -281,14 +367,14 @@ const firebaseConfig = {
 
 /* Login "Help" button: messages are emailed to the teacher through Web3Forms (free).
    One-time setup: get your free access key at web3forms.com and paste it between the quotes. */
-const HELP_ACCESS_KEY = "e9f55ced-6dd6-4b20-be9f-00e3b45beade";
+const HELP_ACCESS_KEY = "PASTE_WEB3FORMS_KEY";
 
 /* File uploads need Firebase's paid Storage plan. You are on the free plan, so they are switched off
    and you share files with links (Google Drive). Set this to true only if you ever enable Storage. */
 const UPLOADS = false;
 
 const root = document.getElementById('root');
-const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false };
+const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0 };
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- helpers ---------- */
@@ -321,6 +407,35 @@ const fmtDay = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { we
 const normCode = s => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 const codeEmail = c => c.toLowerCase() + '@portal.local';
 
+/* ---------- teachers, free trial and payments ---------- */
+const OWNER_EMAIL = "lupingreat55@gmail.com";   /* logging in with this email opens the owner admin panel */
+const DEFAULTS = { price: 1.49, currency: 'CAD', trialDays: 30, payEmail: OWNER_EMAIL, payNote: '' };   /* the owner can change these in Admin > Settings */
+const DAY = 864e5;
+const msOf = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : 0;
+const fmtDate = ms => ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const daysLeft = ms => Math.ceil((ms - Date.now()) / DAY);
+const money = n => '$' + (Math.round(n * 100) / 100).toFixed(2);
+const newRef = () => 'CP-' + String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0');
+const byTid = col => query(collection(db, col), where('tid', '==', S.tid));   /* every list only asks for this teacher's own data */
+async function getSettings(){
+  try { const x = await getDoc(doc(db, 'settings', 'app')); S.settings = { ...DEFAULTS, ...(x.exists() ? x.data() : {}) }; }
+  catch(e) { S.settings = S.settings || { ...DEFAULTS }; }
+  return S.settings;
+}
+function planChip(){
+  if (S.role !== 'teacher' || S.isAdmin || !S.profile) return '';
+  const ms = msOf(S.profile.paidUntil); if (!ms) return '';
+  const d = daysLeft(ms), cls = d <= 3 ? 'r' : d <= 7 ? 'y' : '';
+  const label = d <= 0 ? 'Access ended' : (S.profile.plan === 'paid' ? '' : 'Trial · ') + d + (d === 1 ? ' day' : ' days') + ' left';
+  return `<button class="ghost plan-chip ${cls}" data-a="tab" data-k="plan" data-nobusy>${label}</button>`;
+}
+const refreshChip = () => { const el = document.getElementById('chipslot'); if (el) el.innerHTML = planChip(); };
+/* the owner gets an email (through the same Web3Forms key as the Help button); silent if it is not set up */
+async function notifyOwner(subject, fields){
+  if (HELP_ACCESS_KEY.startsWith('PASTE')) return;
+  try { await fetch('https://api.web3forms.com/submit', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ access_key: HELP_ACCESS_KEY, subject, ...fields, botcheck: false }) }); } catch(e) {}
+}
+
 /* ---------- firebase ---------- */
 if (firebaseConfig.apiKey.startsWith('PASTE')) {
   root.innerHTML = '<div class="login"><h1>Almost there</h1><p>Open <b>index.html</b> and paste your Firebase config at the top (the block that says PASTE YOUR FIREBASE CONFIG HERE).</p></div>';
@@ -351,7 +466,7 @@ async function freshAccount(wanted){
 }
 /* all = true also returns turned-off people (one entry per person) */
 async function getUsers(role, all = false){
-  const s = await getDocs(query(collection(db, 'users'), where('role', '==', role)));
+  const s = await getDocs(query(collection(db, 'users'), where('tid', '==', S.tid), where('role', '==', role)));
   const byName = (a, b) => a.name.localeCompare(b.name);
   const list = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.replaced);
   if (!all) return list.filter(u => u.active).sort(byName);
@@ -411,22 +526,19 @@ const RATINGS = { excellent: ['Excellent', 'g'], good: ['Good', 'g'], fair: ['Fa
 const OLD_MOODS = { great: 'excellent', good: 'good', okay: 'fair', hard: 'difficult' };   /* reports sent before the redesign */
 const PLAN_FOLLOW = { yes: 'Plan was clear', mostly: 'Plan mostly clear', no: 'Plan was unclear' };
 
-/* ---------- feedback alert for the teacher ---------- */
-let fbUnsub = null;
-function updateBadge(){
-  const b = document.querySelector('nav button[data-k="feedback"]');
-  if (b && S.role === 'teacher') b.innerHTML = navInner('feedback', '💬 Feedback');
-}
-function showAlert(msg){
+/* ---------- live alerts: feedback for teachers; sign-ups and payments for the owner ---------- */
+let watchers = [];
+function updateBadge(){ document.querySelectorAll('nav button[data-k]').forEach(b => { b.innerHTML = navInner(b.dataset.k, b.dataset.l); }); }
+function showAlert(msg, tab = 'feedback'){
   const el = document.getElementById('alert');
-  el.innerHTML = '<span>📝 ' + esc(msg) + '</span><button data-a="openfb">View</button><button class="ghost" data-a="closealert">✕</button>';
+  el.innerHTML = '<span>📝 ' + esc(msg) + '</span><button data-a="openfb" data-k="' + tab + '">View</button><button class="ghost" data-a="closealert">✕</button>';
   el.classList.add('show');
 }
-function stopFbWatch(){ if (fbUnsub) { fbUnsub(); fbUnsub = null; } S.fbNew = 0; document.getElementById('alert').classList.remove('show'); }
+function stopFbWatch(){ watchers.forEach(u => { try { u(); } catch(e) {} }); watchers = []; S.fbNew = 0; S.penNew = 0; S.payNew = 0; document.getElementById('alert').classList.remove('show'); }
 function startFbWatch(){
   stopFbWatch();
   let first = true;
-  fbUnsub = onSnapshot(collection(db, 'feedback'), snap => {
+  watchers.push(onSnapshot(byTid('feedback'), snap => {
     S.fbNew = snap.docs.filter(d => d.data().status === 'new').length;
     updateBadge();
     if (first) { if (S.fbNew) showAlert(S.fbNew + ' unread feedback from subs'); }
@@ -435,7 +547,23 @@ function startFbWatch(){
       if (S.tab === 'feedback') show();
     }
     first = false;
-  }, err => console.error('feedback watch', err));
+  }, err => console.error('feedback watch', err)));
+}
+function startAdminWatch(){
+  stopFbWatch();
+  let f1 = true, f2 = true;
+  watchers.push(onSnapshot(query(collection(db, 'users'), where('role', '==', 'teacher'), where('status', '==', 'pending')), snap => {
+    S.penNew = snap.size; updateBadge();
+    if (f1) { if (S.penNew) showAlert(S.penNew + ' teacher' + (S.penNew > 1 ? 's' : '') + ' waiting for approval', 'teachers'); }
+    else { snap.docChanges().forEach(c => { if (c.type === 'added' && !c.doc.metadata.hasPendingWrites) showAlert('New teacher sign-up: ' + (c.doc.data().name || ''), 'teachers'); }); if (S.tab === 'teachers') show(); }
+    f1 = false;
+  }, err => console.error('signup watch', err)));
+  watchers.push(onSnapshot(query(collection(db, 'payments'), where('status', '==', 'pending')), snap => {
+    S.payNew = snap.size; updateBadge();
+    if (f2) { if (S.payNew) showAlert(S.payNew + ' payment' + (S.payNew > 1 ? 's' : '') + ' to check', 'pay'); }
+    else { snap.docChanges().forEach(c => { if (c.type === 'added' && !c.doc.metadata.hasPendingWrites) showAlert('A teacher says they paid: ' + (c.doc.data().ref || ''), 'pay'); }); if (S.tab === 'pay') show(); }
+    f2 = false;
+  }, err => console.error('payment watch', err)));
 }
 /* images show as small pictures (tap to open full size); other files are buttons. All open in a new tab */
 function filesHtml(files){
@@ -569,18 +697,32 @@ function renderLogin(){
     </form>
     <p class="err" role="alert">${esc(S.loginMsg)}</p>
     ${S.loginNote ? `<p class="note">${esc(S.loginNote)}</p>` : ''}
-    <details ${S.loginMsg && S.loginWhich === 'teacher' ? 'open' : ''}><summary>Teacher login</summary>
+    <details ${S.loginMsg && S.loginWhich === 'teacher' ? 'open' : ''}><summary>Teacher login or sign up</summary>
       <form data-form="teacher">
         <input id="em" type="email" placeholder="Email" autocomplete="username" value="${esc(keep.em || '')}" required>
         <div class="pwrap"><input id="pw" type="password" placeholder="Password" autocomplete="current-password" required>${EYE_BTN}</div>
         <button>Log in</button>
       </form>
+      <button type="button" class="grey helpbtn" data-a="signuptoggle" data-nobusy>New teacher? Create an account</button>
+      <div id="signuppanel" hidden>
+        <form data-form="signup" class="helpform" autocomplete="off">
+          <p class="muted" style="margin:0 0 4px">Sign up, then wait for approval. After approval you get a free trial.</p>
+          <label for="sname">Your name</label><input id="sname" maxlength="60" placeholder="e.g. Ms. Lee" required>
+          <label for="sschool">School (optional)</label><input id="sschool" maxlength="80">
+          <label for="semail">Email</label><input id="semail" type="email" autocomplete="off" required>
+          <label for="spw">Password (at least 8 characters)</label>
+          <div class="pwrap"><input id="spw" type="password" autocomplete="new-password" minlength="8" required>${EYE_BTN}</div>
+          <button>Create my account</button>
+          <p class="helpres" id="signres" role="status"></p>
+        </form>
+      </div>
     </details>
     <button type="button" class="grey helpbtn" data-a="helptoggle" data-nobusy>❓ Help</button>
     <div id="helppanel" hidden>
       <form data-form="help" class="helpform" autocomplete="off">
         <p class="muted" style="margin:0 0 4px">Tell us what is going wrong with logging in. Please do not type your code here.</p>
         <label for="hname">Your name</label><input id="hname" maxlength="60" placeholder="Your name (and class)" required>
+        <label for="hteacher">Your teacher's name</label><input id="hteacher" maxlength="60" placeholder="Your teacher's name">
         <label for="htype">What is the problem?</label>
         <select id="htype"><option>My code does not work</option><option>I forgot my code</option><option>I am a sub and cannot get in</option><option>The page will not load</option><option>Something else</option></select>
         <label for="hmsg">Tell us more</label><textarea id="hmsg" data-nofmt maxlength="800" required minlength="5" style="min-height:80px" placeholder="What happens when you try to log in?"></textarea>
@@ -613,13 +755,13 @@ const FORMS = {
     if (HELP_ACCESS_KEY.startsWith('PASTE')) return say('Help is not switched on yet. Please tell your teacher in person.', false);
     let last = 0; try { last = +localStorage.getItem('classroom-help-last') || 0; } catch(e) {}
     if (Date.now() - last < 60000) return say('Your message was just sent. Please wait a minute before sending another.', false);
-    const name = f.querySelector('#hname').value.trim(), type = f.querySelector('#htype').value, message = f.querySelector('#hmsg').value.trim();
+    const name = f.querySelector('#hname').value.trim(), type = f.querySelector('#htype').value, teacher = f.querySelector('#hteacher').value.trim(), message = f.querySelector('#hmsg').value.trim();
     if (!name || message.length < 5) return say('Please add your name and tell us a bit more.', false);
     say('', true);
     try {
       const r = await fetch('https://api.web3forms.com/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ access_key: HELP_ACCESS_KEY, subject: 'Classroom website: login help (' + type + ')', name, problem: type, message,
+        body: JSON.stringify({ access_key: HELP_ACCESS_KEY, subject: 'Classroom website: login help (' + type + ')', name, teacher, problem: type, message,
           sent_at: new Date().toLocaleString(), device: navigator.userAgent.slice(0, 140), botcheck: false })
       });
       let j = {}; try { j = await r.json(); } catch(e) {}
@@ -627,13 +769,13 @@ const FORMS = {
     } catch(e) { return say('Could not send. The school network may be blocking it. Please tell your teacher in person.', false); }
     try { localStorage.setItem('classroom-help-last', String(Date.now())); } catch(e) {}
     f.querySelector('#hname').value = ''; f.querySelector('#hmsg').value = '';
-    say('Sent! Your teacher will get your message.', true);
+    say('Sent! Please also tell your teacher.', true);
   },
   async addstudents(f){
     const names = f.querySelector('#names').value.split('\n').map(x => x.trim()).filter(Boolean);
     for (const name of names){
       const { code, uid } = await freshAccount();
-      await setDoc(doc(db, 'users', uid), { role: 'student', name, code, sid: uid, active: true, createdAt: serverTimestamp() });
+      await setDoc(doc(db, 'users', uid), { role: 'student', name, code, sid: uid, tid: S.tid, active: true, createdAt: serverTimestamp() });
     }
     toast(names.length + ' added'); show();
   },
@@ -642,7 +784,7 @@ const FORMS = {
     const wanted = f.querySelector('#subcode').value.trim();
     if (wanted && !/^\d{6}$/.test(wanted)) return toast('Code must be exactly 6 digits');
     const { code, uid } = await freshAccount(wanted || null);
-    await setDoc(doc(db, 'users', uid), { role: 'sub', name, code, sid: uid, active: true, createdAt: serverTimestamp() });
+    await setDoc(doc(db, 'users', uid), { role: 'sub', name, code, sid: uid, tid: S.tid, active: true, createdAt: serverTimestamp() });
     toast('Sub code created'); show();
   },
   async newwork(f){
@@ -652,7 +794,7 @@ const FORMS = {
     await addDoc(collection(db, 'assignments'), {
       title: f.querySelector('#wtitle').value.trim(), text: f.querySelector('#wtext').value.trim(),
       link: f.querySelector('#wlink').value.trim(), due: f.querySelector('#wdue').value, files: S.pendingWork,
-      audience: all ? ['all'] : picked, createdAt: serverTimestamp()
+      audience: all ? ['all'] : picked, tid: S.tid, createdAt: serverTimestamp()
     });
     toast('Posted'); show();
   },
@@ -660,13 +802,13 @@ const FORMS = {
     const url = f.querySelector('#purl').value.trim();
     if (url && !safeUrl(url)) return toast('A link must start with http');
     if (!url && !S.pendingPrint.length) return toast('Paste a link or upload a file');
-    await addDoc(collection(db, 'requests'), { sid: S.profile.sid, studentName: S.profile.name, url, files: S.pendingPrint, note: f.querySelector('#pnote').value.trim(), status: 'pending', createdAt: serverTimestamp() });
+    await addDoc(collection(db, 'requests'), { tid: S.tid, sid: S.profile.sid, studentName: S.profile.name, url, files: S.pendingPrint, note: f.querySelector('#pnote').value.trim(), status: 'pending', createdAt: serverTimestamp() });
     toast('Sent to your teacher'); show();
   },
   async feedback(f){
     const g = id => f.querySelector(id)?.value.trim() || '';
     const pick = n => f.querySelector(`input[name=${n}]:checked`)?.value || '';
-    const data = { sid: S.profile.sid, name: g('#fname'), date: f.querySelector('#fdate').value, rating: pick('rating'), planfollow: pick('planfollow'),
+    const data = { tid: S.tid, sid: S.profile.sid, name: g('#fname'), date: f.querySelector('#fdate').value, rating: pick('rating'), planfollow: pick('planfollow'),
       concerns: [...f.querySelectorAll('.crow')].map(r => ({ student: r.querySelector('.cs').value.trim(), note: r.querySelector('.cn').value.trim() })).filter(c => c.student || c.note),
       shoutouts: g('#fshout'), good: g('#fgood'), suggest: g('#fsug'), planchange: g('#fplan'), status: 'new', createdAt: serverTimestamp() };
     if (!data.name || !data.date) return toast('Please add the date and your name');
@@ -674,7 +816,43 @@ const FORMS = {
     await addDoc(collection(db, 'feedback'), data);
     S.fbSent = true; show();
   },
-  async board(f){ await setDoc(doc(db, 'board', 'main'), { text: f.querySelector('#btext').value, updatedAt: serverTimestamp() }); toast('Saved'); },
+  async signup(f){
+    const res = f.querySelector('#signres'), say = t => { res.textContent = t; res.className = 'helpres no'; };
+    const name = f.querySelector('#sname').value.trim(), school = f.querySelector('#sschool').value.trim(), em = f.querySelector('#semail').value.trim(), pw = f.querySelector('#spw').value;
+    if (!name) return say('Please type your name.');
+    if (pw.length < 8) return say('Please use a password with at least 8 characters.');
+    say(''); res.className = 'helpres';
+    S.signingUp = true; S.fresh = true; store.set(Date.now());
+    let user = null;
+    try {
+      user = (await createUserWithEmailAndPassword(auth, em, pw)).user;
+      await setDoc(doc(db, 'users', user.uid), { role: 'teacher', name, email: em, school, status: 'pending', ref: newRef(), createdAt: serverTimestamp() });
+    } catch(e) {
+      S.fresh = false;
+      if (user) { try { await deleteUser(user); } catch(x) { try { await signOut(auth); } catch(y) {} } }   /* never leave a half-made account behind */
+      S.signingUp = false;
+      const c = e?.code || '';
+      return say(c.includes('email-already-in-use') ? 'That email already has an account. Use the Teacher login above.' : c.includes('weak-password') ? 'Please choose a stronger password.' : c.includes('invalid-email') ? 'That email does not look right.' : c.includes('permission') ? 'Sign-up is not switched on yet (the database rules need updating).' : friendly(e));
+    }
+    notifyOwner('Classroom website: new teacher signed up', { name, email: em, school });
+    S.signingUp = false;
+    await enter(user);
+  },
+  async paid(f){
+    const st = await getSettings(), months = +f.querySelector('#pmonths').value || 1, note = f.querySelector('#pnotep').value.trim();
+    const amount = Math.round(st.price * months * 100) / 100;
+    await addDoc(collection(db, 'payments'), { tid: S.user.uid, ref: S.profile.ref || '', months, amount, currency: st.currency, note, status: 'pending', createdAt: serverTimestamp() });
+    notifyOwner('Classroom website: a teacher says they paid', { teacher: S.profile.name, email: S.profile.email, reference: S.profile.ref, months, amount: money(amount) + ' ' + st.currency, note });
+    toast('Thank you! It will be checked soon.'); show();
+  },
+  async settings(f){
+    const v = id => f.querySelector(id).value.trim();
+    const price = parseFloat(v('#sprice')), trialDays = parseInt(v('#strial'), 10);
+    if (!(price >= 0) || !(trialDays >= 0)) return toast('Please enter valid numbers');
+    await setDoc(doc(db, 'settings', 'app'), { price, currency: v('#scur') || 'CAD', trialDays, payEmail: v('#spay') || OWNER_EMAIL, payNote: v('#snote'), updatedAt: serverTimestamp() });
+    S.settings = null; toast('Saved');
+  },
+  async board(f){ await setDoc(doc(db, 'board', S.tid), { text: f.querySelector('#btext').value, updatedAt: serverTimestamp() }); toast('Saved'); },
 };
 
 /* ---------- collapsible boxes (class info + day plan) ---------- */
@@ -723,7 +901,7 @@ async function changeCode(id){
   try { made = await freshAccount(wanted || null); }
   catch(e) { if (e.code === 'auth/email-already-in-use') return toast('That code is already used (maybe by a turned-off person). Try another.'); throw e; }
   /* same person (same sid), new login; the old login is retired */
-  await setDoc(doc(db, 'users', made.uid), { role: old.role, name: old.name, code: made.code, sid: old.sid, active: !!old.active, createdAt: serverTimestamp() });
+  await setDoc(doc(db, 'users', made.uid), { role: old.role, name: old.name, code: made.code, sid: old.sid, tid: old.tid, active: !!old.active, createdAt: serverTimestamp() });
   await updateDoc(doc(db, 'users', id), { active: false, replaced: true });
   toast('Code changed'); show();
 }
@@ -734,6 +912,52 @@ const personCard = u => `<div class="card ${u.active ? '' : 'off'}"><h3>${esc(u.
 const ACTIONS = {
   tab: b => { S.fbSent = false; S.tab = b.dataset.k; show(); },
   stay: () => markActive(),
+  signuptoggle: b => {
+    const p = document.getElementById('signuppanel'); p.hidden = !p.hidden;
+    b.textContent = p.hidden ? 'New teacher? Create an account' : '✕ Close sign-up';
+    if (!p.hidden) setTimeout(() => p.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+  },
+  mode: () => {   /* the owner switches between the admin panel and their own classroom */
+    S.role = S.role === 'admin' ? 'teacher' : 'admin';
+    S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false;
+    if (S.role === 'teacher') startFbWatch(); else startAdminWatch();
+    show();
+  },
+  recheck: async () => { await enter(auth.currentUser); if (S.locked === 'pending') toast('Still waiting for approval'); },
+  copyref: async () => { const t = S.profile?.ref || ''; try { await navigator.clipboard.writeText(t); toast('Copied ' + t); } catch(e) { toast('Your number is ' + t); } },
+  tapprove: async b => {
+    const st = await getSettings();
+    await updateDoc(doc(db, 'users', b.dataset.id), { status: 'active', plan: 'trial', paidUntil: Timestamp.fromMillis(Date.now() + st.trialDays * DAY) });
+    toast('Approved'); show();
+  },
+  tblock: async b => { if (!confirm('Block this teacher? They and their students and subs will not be able to use the site.')) return; await updateDoc(doc(db, 'users', b.dataset.id), { status: 'blocked' }); show(); },
+  tunblock: async b => {
+    const ref = doc(db, 'users', b.dataset.id), u = (await getDoc(ref)).data(), st = await getSettings();
+    await updateDoc(ref, u.paidUntil ? { status: 'active' } : { status: 'active', plan: 'trial', paidUntil: Timestamp.fromMillis(Date.now() + st.trialDays * DAY) });
+    show();
+  },
+  tdays: async b => {
+    const ref = doc(db, 'users', b.dataset.id), u = (await getDoc(ref)).data();
+    if (u.status === 'pending') return toast('Approve this teacher first');
+    const n = parseInt(prompt('How many days to add? (use a minus number to take days away)', '30'), 10); if (!n) return;
+    const ms = msOf(u.paidUntil), base = n > 0 ? Math.max(Date.now(), ms) : ms;
+    await updateDoc(ref, { paidUntil: Timestamp.fromMillis(base + n * DAY) });
+    toast('Done'); show();
+  },
+  payok: async b => {
+    const pr = doc(db, 'payments', b.dataset.id), pay = (await getDoc(pr)).data();
+    const m = parseInt(prompt('How many months to add for this payment?', pay.months || 1), 10); if (!(m > 0)) return;
+    const tr = doc(db, 'users', pay.tid), t = (await getDoc(tr)).data();
+    const base = Math.max(Date.now(), msOf(t.paidUntil));
+    await updateDoc(tr, { paidUntil: Timestamp.fromMillis(base + m * 30 * DAY), plan: 'paid', status: 'active' });
+    await updateDoc(pr, { status: 'approved', months: m, decidedAt: serverTimestamp() });
+    toast('Approved: +' + m + ' month' + (m > 1 ? 's' : '')); show();
+  },
+  payno: async b => {
+    const note = prompt('Optional note for the teacher (for example: "payment not found yet")', ''); if (note === null) return;
+    await updateDoc(doc(db, 'payments', b.dataset.id), { status: 'rejected', adminNote: note.trim(), decidedAt: serverTimestamp() });
+    toast('Marked as not received'); show();
+  },
   helptoggle: b => {
     const p = document.getElementById('helppanel'); p.hidden = !p.hidden;
     b.textContent = p.hidden ? '❓ Help' : '✕ Close help';
@@ -751,7 +975,7 @@ const ACTIONS = {
   fbaddrow: () => document.getElementById('fb-rows')?.insertAdjacentHTML('beforeend', concernRow()),
   fbrmrow: b => { b.closest('.crow').remove(); const w = document.getElementById('fb-rows'); if (w && !w.children.length) w.insertAdjacentHTML('beforeend', concernRow()); },
   logout: async () => { root.classList.add('out'); await new Promise(r => setTimeout(r, 230)); await signOut(auth); },
-  done: async b => { const sid = S.profile.sid; confetti(b); await setDoc(doc(db, 'done', sid + '_' + b.dataset.id), { sid, aid: b.dataset.id, at: serverTimestamp() }); show(); },
+  done: async b => { const sid = S.profile.sid; confetti(b); await setDoc(doc(db, 'done', sid + '_' + b.dataset.id), { tid: S.tid, sid, aid: b.dataset.id, at: serverTimestamp() }); show(); },
   undo: async b => { await deleteDoc(doc(db, 'done', S.profile.sid + '_' + b.dataset.id)); show(); },
   setcode: b => changeCode(b.dataset.id),
   rename: async b => {
@@ -776,11 +1000,11 @@ const ACTIONS = {
   },
   loadplan: b => { S.planDate = b.dataset.d; show(); },
   fmt: b => { const ta = b.closest('.fmtbar')?.nextElementSibling; if (ta) applyFmt(ta, b.dataset.m); },
-  openfb: () => { document.getElementById('alert').classList.remove('show'); S.tab = 'feedback'; show(); },
+  openfb: b => { document.getElementById('alert').classList.remove('show'); S.tab = b?.dataset?.k || 'feedback'; show(); },
   closealert: () => document.getElementById('alert').classList.remove('show'),
   fbread: b => updateDoc(doc(db, 'feedback', b.dataset.id), { status: 'read' }),
   fbreadall: async () => {
-    const s = await getDocs(query(collection(db, 'feedback'), where('status', '==', 'new')));
+    const s = await getDocs(query(collection(db, 'feedback'), where('tid', '==', S.tid), where('status', '==', 'new')));
     await Promise.all(s.docs.map(d => updateDoc(d.ref, { status: 'read' })));
   },
   fbdel: b => { if (confirm('Delete this feedback?')) return deleteDoc(doc(db, 'feedback', b.dataset.id)); },
@@ -801,8 +1025,8 @@ const ACTIONS = {
     const items = ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
       .filter(x => x.title || x.text || x.links.length || x.files.length);
     if (items.some(x => x.links.some(l => !safeUrl(l.url)))) return toast('Links must start with http:// or https://');
-    const data = k === 'info' ? { items, updatedAt: serverTimestamp() } : { items, subs: ED.planSubs, updatedAt: serverTimestamp() };
-    await setDoc(doc(db, k === 'info' ? 'subinfo' : 'subplans', k === 'info' ? 'general' : S.planDate), data);
+    const data = k === 'info' ? { items, tid: S.tid, updatedAt: serverTimestamp() } : { items, subs: ED.planSubs, tid: S.tid, date: S.planDate, updatedAt: serverTimestamp() };
+    await setDoc(doc(db, k === 'info' ? 'subinfo' : 'subplans', k === 'info' ? S.tid : S.tid + '_' + S.planDate), data);
     await delFiles(ED.trash[k]); ED.trash[k] = [];
     toast('Saved');
     if (k === 'plan') show();
@@ -865,7 +1089,16 @@ const TABS = {
   teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['feedback', '💬 Feedback']],
   sub: [['day', '📅 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
 };
-const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${S.role === 'teacher' && k === 'feedback' && S.fbNew ? `<span class="badge">${S.fbNew}</span>` : ''}`; };
+function tabsFor(){
+  if (S.role === 'admin') return [['teachers', '🧑‍🏫 Teachers'], ['pay', '💳 Payments'], ['settings', '⚙️ Settings']];
+  if (S.role === 'teacher') {
+    if (S.locked) return [['plan', '💳 Plan']];
+    return S.isAdmin ? TABS.teacher : [...TABS.teacher, ['plan', '💳 Plan']];
+  }
+  return TABS[S.role];
+}
+const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
+const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${navBadge(k) ? `<span class="badge">${navBadge(k)}</span>` : ''}`; };
 const FOOT = '<footer class="copy">© 2026 Mr. D. All rights reserved.</footer>';
 function shell(content){
   const nav = root.querySelector('nav');
@@ -875,9 +1108,9 @@ function shell(content){
     nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tab));
   } else {
     root.dataset.role = S.role;
-    root.innerHTML = `<header><b>${esc(S.profile.name)}</b><button class="ghost" data-a="logout" data-nobusy>Log out</button></header>
+    root.innerHTML = `<header><div class="hl"><b>${esc(S.profile.name)}</b><span id="chipslot">${planChip()}</span></div><div class="hr">${S.isAdmin ? `<button class="ghost" data-a="mode" data-nobusy>${S.role === 'admin' ? '📚 My class' : '⚙️ Admin'}</button>` : ''}<button class="ghost" data-a="logout" data-nobusy>Log out</button></div></header>
       <main>${content}${FOOT}</main>
-      <nav>${TABS[S.role].map(([k, l]) => `<button data-a="tab" data-k="${k}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav>`;
+      <nav>${tabsFor().map(([k, l]) => `<button data-a="tab" data-k="${k}" data-l="${esc(l)}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav>`;
   }
   enhance(root);
 }
@@ -886,7 +1119,7 @@ async function show(){
   if (fresh) { shell('<div class="skel"></div><div class="skel"></div><div class="skel s2"></div>'); window.scrollTo(0, 0); }
   let html;
   try { html = await VIEWS[key](); }
-  catch(e){ console.error(e); html = '<p class="err">' + esc(friendly(e)) + '</p>'; }
+  catch(e){ console.error(e); html = (String(e?.code || '').includes('permission') && (S.role === 'student' || S.role === 'sub')) ? '<div class="card"><h3>Class paused</h3><p class="muted">This class is not available right now. Please tell your teacher.</p></div>' : '<p class="err">' + esc(friendly(e)) + '</p>'; }
   if (my !== S.rid) return;   /* a newer click already took over */
   shell(html);
   S.shown = key;
@@ -901,9 +1134,9 @@ async function show(){
 async function myWork(){
   const sid = S.profile.sid, A = collection(db, 'assignments');
   const [a1, a2, d] = await Promise.all([
-    getDocs(query(A, where('audience', 'array-contains', 'all'))),
-    getDocs(query(A, where('audience', 'array-contains', sid))),
-    getDocs(query(collection(db, 'done'), where('sid', '==', sid)))
+    getDocs(query(A, where('tid', '==', S.tid), where('audience', 'array-contains', 'all'))),
+    getDocs(query(A, where('tid', '==', S.tid), where('audience', 'array-contains', sid))),
+    getDocs(query(collection(db, 'done'), where('tid', '==', S.tid), where('sid', '==', sid)))
   ]);
   const doneSet = new Set(d.docs.map(x => x.data().aid));
   const m = new Map();
@@ -917,9 +1150,10 @@ const workCard = (a, mine) => `<div class="card ${a.done ? 'done' : ''}">
   ${filesHtml(a.files)}
   ${mine ? `<button class="${a.done ? 'grey' : ''}" data-a="${a.done ? 'undo' : 'done'}" data-id="${a.id}">${a.done ? 'Undo' : '✓ Mark done'}</button>` : ''}</div>`;
 
+const teacherStatus = u => { const ms = msOf(u.paidUntil); return u.status === 'pending' ? ['Waiting', 'y'] : u.status === 'blocked' ? ['Blocked', 'r'] : ms <= Date.now() ? ['Ended', 'r'] : [u.plan === 'paid' ? 'Paid' : 'Free trial', 'g']; };
 const VIEWS = {
   'student:home': async () => {
-    const b = await getDoc(doc(db, 'board', 'main'));
+    const b = await getDoc(doc(db, 'board', S.tid));
     const text = b.exists() ? b.data().text : '';
     const w = await myWork(); const pending = w.filter(a => !a.done).length;
     return `<h2>Hi ${esc(S.profile.name)} <span class="wave">👋</span></h2>
@@ -933,7 +1167,7 @@ const VIEWS = {
   },
   'student:print': async () => {
     S.pendingPrint = [];
-    const s = await getDocs(query(collection(db, 'requests'), where('sid', '==', S.profile.sid)));
+    const s = await getDocs(query(collection(db, 'requests'), where('tid', '==', S.tid), where('sid', '==', S.profile.sid)));
     const list = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => secs(b) - secs(a));
     return `<h2>Ask for a print</h2><div class="card"><form data-form="print">
       <label>Paste a link to the picture</label><input id="purl" type="url" placeholder="https://…">
@@ -956,7 +1190,7 @@ const VIEWS = {
   },
   'teacher:work': async () => {
     S.pendingWork = [];
-    const [students, as, dn] = await Promise.all([getUsers('student'), getDocs(collection(db, 'assignments')), getDocs(collection(db, 'done'))]);
+    const [students, as, dn] = await Promise.all([getUsers('student'), getDocs(byTid('assignments')), getDocs(byTid('done'))]);
     const doneBy = {}; dn.docs.forEach(d => { const x = d.data(); (doneBy[x.aid] = doneBy[x.aid] || new Set()).add(x.sid); });
     const sidName = Object.fromEntries(students.map(s => [s.sid, s.name]));
     const list = as.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => secs(b) - secs(a));
@@ -979,7 +1213,7 @@ const VIEWS = {
           <button class="red" data-a="delwork" data-id="${a.id}">Delete</button></div>`; }).join('') || '<p class="muted">Nothing posted yet.</p>'}`;
   },
   'teacher:print': async () => {
-    const s = await getDocs(collection(db, 'requests'));
+    const s = await getDocs(byTid('requests'));
     const list = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.status === 'printed') - (b.status === 'printed') || secs(b) - secs(a));
     return `<h2>Print requests</h2>${list.map(r => `<div class="card"><h3>${esc(r.studentName)}</h3>
       ${safeUrl(r.url) ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Open picture link</a><br>` : ''}${filesHtml(r.files)}<div class="txt">${linkify(r.note)}</div>
@@ -987,7 +1221,7 @@ const VIEWS = {
       ${r.status === 'printed' ? '' : `<button data-a="printed" data-id="${r.id}">Mark printed</button>`}<button class="red" data-a="delreq" data-id="${r.id}">Delete</button></div>`).join('') || '<p class="muted">No requests.</p>'}`;
   },
   'teacher:feedback': async () => {
-    const s = await getDocs(collection(db, 'feedback'));
+    const s = await getDocs(byTid('feedback'));
     const list = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => secs(b) - secs(a));
     const txt = v => v ? `<div class="txt">${linkify(v)}</div>` : '';
     const sec = (title, inner) => inner ? `<div class="fsum"><h4>${title}</h4>${inner}</div>` : '';
@@ -1005,15 +1239,15 @@ const VIEWS = {
           ${x.status === 'new' ? `<button data-a="fbread" data-id="${x.id}">Mark read</button>` : ''}<button class="red" data-a="fbdel" data-id="${x.id}">Delete</button></details>`; }).join('') || '<p class="muted">No reports yet.</p>'}`;
   },
   'teacher:board': async () => {
-    const b = await getDoc(doc(db, 'board', 'main'));
+    const b = await getDoc(doc(db, 'board', S.tid));
     return `<h2>Classroom board</h2><div class="card"><p class="muted">Everyone sees this on their Home page.</p><form data-form="board">
       <textarea id="btext" style="min-height:220px" placeholder="Today we are…&#10;Reminders…">${esc(b.exists() ? b.data().text : '')}</textarea><button>Save</button></form></div>`;
   },
   'teacher:sub': async () => {
     S.planDate = S.planDate || todayStr();
-    const [subs, info, plan, all] = await Promise.all([getUsers('sub', true), getDoc(doc(db, 'subinfo', 'general')), getDoc(doc(db, 'subplans', S.planDate)), getDocs(collection(db, 'subplans'))]);
+    const [subs, info, plan, all] = await Promise.all([getUsers('sub', true), getDoc(doc(db, 'subinfo', S.tid)), getDoc(doc(db, 'subplans', S.tid + '_' + S.planDate)), getDocs(byTid('subplans'))]);
     const subName = Object.fromEntries(subs.map(s => [s.sid, s.name]));
-    const dates = all.docs.map(d => ({ id: d.id, names: (d.data().subs || []).map(x => subName[x] || '?').join(', ') })).sort((a, b) => b.id.localeCompare(a.id));
+    const dates = all.docs.map(d => ({ id: d.data().date, names: (d.data().subs || []).map(x => subName[x] || '?').join(', ') })).sort((a, b) => b.id.localeCompare(a.id));
     ED.trash = { info: [], plan: [] };
     ED.planSubs = plan.exists() ? (plan.data().subs || []) : [];
     ED.info = normItems(info.exists() ? info.data() : null, 'General info');
@@ -1035,11 +1269,84 @@ const VIEWS = {
       ${dates.length ? '<p class="muted">Days with a plan:</p>' + dates.map(d => `<button class="grey" data-a="loadplan" data-d="${d.id}">${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</button>`).join('') : ''}`;
   },
 
+  /* ---------- teacher: plan and payment ---------- */
+  'teacher:plan': async () => {
+    const [st, me, ps] = await Promise.all([getSettings(), getDoc(doc(db, 'users', S.user.uid)), getDocs(query(collection(db, 'payments'), where('tid', '==', S.user.uid)))]);
+    if (me.exists()) { S.profile = me.data(); refreshChip(); }
+    const p = S.profile, ms = msOf(p.paidUntil), d = daysLeft(ms), trial = p.plan !== 'paid';
+    const list = ps.docs.map(x => ({ id: x.id, ...x.data() })).sort((a, b) => secs(b) - secs(a));
+    const waiting = list.find(x => x.status === 'pending');
+    const head = d > 0
+      ? `<div class="card plancard ${d <= 7 ? 'soon' : ''}"><div class="bigdays">${d}</div><div><b>${d === 1 ? 'day' : 'days'} left</b><div class="muted">${trial ? 'Free trial' : 'Paid plan'} · until ${fmtDate(ms)}</div></div></div>`
+      : `<div class="card plancard ended"><div class="bigdays">0</div><div><b>Your access has ended</b><div class="muted">Your students and subs cannot log in until you renew. Nothing has been deleted.</div></div></div>`;
+    const cont = (S.locked && d > 0) ? `<div class="card"><h3>You are all set 🎉</h3><p class="muted">Your access was renewed.</p><button data-a="recheck">Continue</button></div>` : '';
+    const opts = [1, 2, 3, 6, 12].map(m => `<option value="${m}">${m} month${m > 1 ? 's' : ''} · ${money(st.price * m)} ${esc(st.currency)}</option>`).join('');
+    const chipFor = x => x.status === 'approved' ? '<span class="pill g">✅ Approved</span>' : x.status === 'rejected' ? '<span class="pill r">❌ Not received</span>' : '<span class="pill y">⏳ Waiting</span>';
+    return `<h2>My plan</h2>${head}${cont}
+      <div class="card"><h3>Renew or pay</h3>
+        <p><b>${money(st.price)} ${esc(st.currency)} per month</b></p>
+        <ol class="steps"><li>Send an <b>Interac e-Transfer</b> to <b>${esc(st.payEmail)}</b>.</li>
+          <li>In the message box, write your reference number:<div class="refbox">${esc(p.ref || '')}</div><button type="button" class="grey" data-a="copyref" data-nobusy>Copy number</button></li>
+          <li>Come back here and tap <b>I have paid</b>. Your days are added once the payment is checked.</li></ol>
+        ${st.payNote ? `<p class="muted">${esc(st.payNote)}</p>` : ''}
+        ${waiting ? `<div class="waitnote">⏳ Your payment of ${money(waiting.amount)} (${waiting.months} month${waiting.months > 1 ? 's' : ''}) is waiting to be checked.</div>`
+          : `<form data-form="paid"><label>How many months?</label><select id="pmonths">${opts}</select>
+              <label>Note (optional, e.g. confirmation number)</label><input id="pnotep" maxlength="120"><button>I have paid</button></form>`}
+      </div>
+      <h2>Payments</h2>${list.map(x => `<div class="card"><b>${money(x.amount)} ${esc(x.currency || st.currency)}</b> · ${x.months} month${x.months > 1 ? 's' : ''} ${chipFor(x)}
+        <div class="muted">${x.createdAt ? fmtDate(secs(x) * 1000) : ''}${x.note ? ' · ' + esc(x.note) : ''}</div>${x.adminNote ? `<div class="txt">Note from the owner: ${esc(x.adminNote)}</div>` : ''}</div>`).join('') || '<p class="muted">No payments yet.</p>'}`;
+  },
+
+  /* ---------- owner admin panel ---------- */
+  'admin:teachers': async () => {
+    const [us, st] = await Promise.all([getDocs(collection(db, 'users')), getSettings()]);
+    const all = us.docs.map(d => ({ id: d.id, ...d.data() }));
+    const teachers = all.filter(u => u.role === 'teacher');
+    const cnt = {};
+    all.filter(u => (u.role === 'student' || u.role === 'sub') && u.active && !u.replaced && u.tid).forEach(u => { const c = cnt[u.tid] = cnt[u.tid] || { s: 0, b: 0 }; if (u.role === 'student') c.s++; else c.b++; });
+    teachers.sort((a, b) => (b.status === 'pending') - (a.status === 'pending') || (a.name || '').localeCompare(b.name || ''));
+    return `<h2>Teachers (${teachers.length})</h2>
+      <p class="muted" style="margin-top:-6px">Free trial after approval: ${st.trialDays} days. Price: ${money(st.price)} ${esc(st.currency)} per month. Change these in Settings.</p>
+      ${teachers.map(u => {
+        const [lab, cls] = teacherStatus(u), ms = msOf(u.paidUntil), c = cnt[u.id] || { s: 0, b: 0 };
+        return `<div class="card"><h3>${esc(u.name)} <span class="pill ${cls}">${lab}</span></h3>
+          <div class="muted">${esc(u.email)}${u.school ? ' · ' + esc(u.school) : ''}</div>
+          <div class="muted">Reference ${esc(u.ref || '')} · ${c.s} student${c.s === 1 ? '' : 's'} · ${c.b} sub${c.b === 1 ? '' : 's'}</div>
+          ${ms ? `<div>${daysLeft(ms) > 0 ? daysLeft(ms) + ' days left' : 'Ended'} · until ${fmtDate(ms)}</div>` : ''}
+          ${u.status === 'pending' ? `<button class="ok" data-a="tapprove" data-id="${u.id}">Approve (${st.trialDays}-day free trial)</button><button class="red" data-a="tblock" data-id="${u.id}">Reject</button>`
+            : u.status === 'blocked' ? `<button class="ok" data-a="tunblock" data-id="${u.id}">Unblock</button>`
+            : `<button class="grey" data-a="tdays" data-id="${u.id}">± Days</button><button class="red" data-a="tblock" data-id="${u.id}">Block</button>`}</div>`; }).join('') || '<p class="muted">No teachers have signed up yet.</p>'}`;
+  },
+  'admin:pay': async () => {
+    const [ps, us] = await Promise.all([getDocs(collection(db, 'payments')), getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')))]);
+    const by = Object.fromEntries(us.docs.map(d => [d.id, d.data()]));
+    const list = ps.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.status === 'pending') - (a.status === 'pending') || secs(b) - secs(a));
+    const chipFor = x => x.status === 'approved' ? '<span class="pill g">Approved</span>' : x.status === 'rejected' ? '<span class="pill r">Not received</span>' : '<span class="pill y">To check</span>';
+    return `<h2>Payments</h2><p class="muted" style="margin-top:-6px">Check your bank for an e-Transfer with the teacher's reference number, then approve it.</p>
+      ${list.map(x => { const t = by[x.tid] || {};
+        return `<div class="card"><h3>${esc(t.name || 'Unknown teacher')} ${chipFor(x)}</h3>
+          <div class="muted">${esc(t.email || '')}</div>
+          <div><b>${money(x.amount)} ${esc(x.currency || '')}</b> · ${x.months} month${x.months > 1 ? 's' : ''} · reference <b>${esc(x.ref || '')}</b></div>
+          <div class="muted">${x.createdAt ? fmtDate(secs(x) * 1000) : ''}${x.note ? ' · ' + esc(x.note) : ''}</div>
+          ${x.status === 'pending' ? `<button class="ok" data-a="payok" data-id="${x.id}">I received it: approve</button><button class="red" data-a="payno" data-id="${x.id}">Not received</button>` : ''}</div>`; }).join('') || '<p class="muted">No payments yet.</p>'}`;
+  },
+  'admin:settings': async () => {
+    const st = await getSettings();
+    return `<h2>Settings</h2><div class="card"><form data-form="settings">
+      <label>Price per month</label><input id="sprice" type="number" step="0.01" min="0" value="${st.price}" required>
+      <label>Currency label (for example CAD)</label><input id="scur" maxlength="6" value="${esc(st.currency)}">
+      <label>Free trial length (days)</label><input id="strial" type="number" min="0" step="1" value="${st.trialDays}" required>
+      <label>Send e-Transfers to (email)</label><input id="spay" type="email" value="${esc(st.payEmail)}">
+      <label>Extra payment note (optional, teachers see it)</label><textarea id="snote" data-nofmt style="min-height:70px">${esc(st.payNote)}</textarea>
+      <button>Save settings</button></form></div>
+      <p class="muted">A new price applies to new payments. The trial length applies to teachers you approve from now on.</p>`;
+  },
+
   /* ---------- sub ---------- */
   'sub:day': async () => {
     /* a sub only receives the days the teacher assigned to them */
-    const s = await getDocs(query(collection(db, 'subplans'), where('subs', 'array-contains', S.profile.sid)));
-    const plans = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id));
+    const s = await getDocs(query(collection(db, 'subplans'), where('tid', '==', S.tid), where('subs', 'array-contains', S.profile.sid)));
+    const plans = s.docs.map(d => ({ ...d.data(), id: d.data().date })).sort((a, b) => a.id.localeCompare(b.id));
     if (!plans.length) return '<h2>Day plan</h2><div class="card muted">No days have been assigned to you yet. Check Class info, or ask the teacher.</div>';
     const t = todayStr();
     if (!plans.some(p => p.id === S.planDate)) S.planDate = (plans.find(p => p.id >= t) || plans[plans.length - 1]).id;
@@ -1080,35 +1387,60 @@ const VIEWS = {
       </form>`;
   },
   'sub:info': async () => {
-    const i = await getDoc(doc(db, 'subinfo', 'general'));
+    const i = await getDoc(doc(db, 'subinfo', S.tid));
     return `<h2>Class info</h2>${boxesView(normItems(i.exists() ? i.data() : null, 'General info'), 'Nothing here yet.')}`;
   }
 };
 
 /* ---------- session ---------- */
+function renderGate(kind){
+  const p = S.profile || {};
+  const m = kind === 'pending' ? ['⏳', 'Waiting for approval', 'Thanks for signing up! Your account will be switched on once it is approved.'] : ['⛔', 'Account paused', 'This account is not active. Please contact the site owner.'];
+  root.classList.remove('out'); delete root.dataset.role;
+  root.innerHTML = '<div class="login-wrap"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><div id="loginslot"></div><footer class="copy login-copy">© 2026 Mr. D. All rights reserved.</footer></div>';
+  root.querySelector('#loginslot').innerHTML = `<div class="login enter"><div class="logo">${m[0]}</div><h1>${m[1]}</h1><p class="muted">${m[2]}</p>
+    ${kind === 'pending' ? `<p class="note">Signed up as ${esc(p.email || '')}</p><button data-a="recheck">Check again</button>` : ''}
+    <button class="grey" data-a="logout" data-nobusy style="margin-top:8px">Log out</button></div>`;
+}
+async function enter(user){
+  lastActive = Date.now(); lastSaved = lastActive; store.set(lastActive); S.idleOut = false; S.user = user;
+  let snap = null;
+  try { snap = await getDoc(doc(db, 'users', user.uid)); } catch(e) { /* no profile */ }
+  let p = snap && snap.exists() ? snap.data() : null;
+  const out = async msg => { S.fresh = false; S.loginMsg = msg; await signOut(auth); };
+  if (!p && (user.email || '').toLowerCase() === OWNER_EMAIL.toLowerCase()) {
+    /* the owner's first login creates the admin profile (the database rules only allow this for the owner's user ID) */
+    try { p = { role: 'admin', name: 'Owner', email: user.email, createdAt: serverTimestamp() }; await setDoc(doc(db, 'users', user.uid), p); }
+    catch(e) { S.loginWhich = 'teacher'; return out('Owner setup is not finished: paste your user ID into the database rules (see SETUP-MULTI.md).'); }
+  }
+  if (!p) { S.loginWhich = 'teacher'; return out('This login has no access.'); }
+  S.isAdmin = false; S.locked = null; S.tid = null;
+  if (p.role === 'student' || p.role === 'sub') {
+    if (!p.tid) return out('This code is from the old system. Ask your teacher for a new one.');
+    if (!p.active) return out('This code has been turned off. Ask your teacher.');
+    S.tid = p.tid;
+  } else if (p.role === 'teacher') {
+    S.tid = user.uid;
+    if (p.status === 'pending') S.locked = 'pending';
+    else if (p.status === 'blocked') S.locked = 'blocked';
+    else if (msOf(p.paidUntil) <= Date.now()) S.locked = 'expired';
+  } else if (p.role === 'admin') { S.isAdmin = true; S.tid = user.uid; }
+  else return out('This login has no access.');
+  S.profile = p; S.role = p.role;
+  if (S.locked === 'pending' || S.locked === 'blocked') { S.fresh = false; stopFbWatch(); renderGate(S.locked); return; }
+  S.tab = tabsFor()[0][0]; S.shown = null;
+  if (S.fresh) { S.fresh = false; if (playWelcome(S.profile.name)) await new Promise(r => setTimeout(r, 190)); }   /* welcome screen covers the switch */
+  show();
+  if (S.role === 'teacher' && !S.locked) startFbWatch(); else if (S.role === 'admin') startAdminWatch(); else stopFbWatch();
+}
 onAuthStateChanged(auth, async user => {
-  if (!user) { stopFbWatch(); hideIdleWarn(); S.user = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; renderLogin(); return; }
+  if (S.signingUp) return;   /* the sign-up form finishes the job itself */
+  if (!user) { stopFbWatch(); hideIdleWarn(); S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
   if (!S.fresh) {   /* a saved session from an earlier visit: only keep it if it was used in the last 15 minutes */
     const last = store.get();
     if (last && Date.now() - last > IDLE_MS) { S.loginNote = 'You were logged out after 15 minutes of no activity.'; await signOut(auth); return; }
   }
-  lastActive = Date.now(); lastSaved = lastActive; store.set(lastActive); S.idleOut = false;
-  S.user = user;
-  let snap = null;
-  try { snap = await getDoc(doc(db, 'users', user.uid)); } catch(e) { /* no profile */ }
-  if (snap && snap.exists()) {
-    const p = snap.data();
-    if (!p.active) { S.fresh = false; S.loginMsg = 'This code has been turned off. Ask your teacher.'; await signOut(auth); return; }
-    S.profile = p; S.role = p.role;
-  } else {
-    /* no profile = maybe the teacher; only the teacher is allowed to read the student list */
-    try { await getDocs(query(collection(db, 'users'), where('role', '==', 'student'))); S.role = 'teacher'; S.profile = { name: 'Teacher' }; }
-    catch(e) { S.fresh = false; S.loginMsg = 'This login has no access.'; await signOut(auth); return; }
-  }
-  S.tab = TABS[S.role][0][0]; S.shown = null;
-  if (S.fresh) { S.fresh = false; if (playWelcome(S.profile.name)) await new Promise(r => setTimeout(r, 190)); }   /* welcome screen covers the switch */
-  show();
-  if (S.role === 'teacher') startFbWatch(); else stopFbWatch();
+  await enter(user);
 });
 </script>
 </body>
