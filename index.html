@@ -91,7 +91,7 @@
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45}
   header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 2px 12px rgba(79,70,229,.25)}
-  main{max-width:720px;margin:0 auto;padding:16px 16px 100px}
+  main{max-width:720px;margin:0 auto;padding:16px 16px calc(var(--navh,56px) + 48px)}
   nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);overflow-x:auto}
   nav button{flex:1 0 auto;position:relative;border:0;border-radius:0;margin:0;background:none;padding:8px 8px;font-size:12px;line-height:1.2;color:var(--muted);cursor:pointer;white-space:nowrap}
   nav .ni{display:block;font-size:19px}
@@ -316,6 +316,22 @@
   .fsum h4{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
   .concern{border-left:3px solid #f87171;padding:2px 0 2px 10px;margin:6px 0}
 
+  /* login fits the screen: the background shapes are clipped, and only a very small screen scrolls inside the card area (no scrollbar shown) */
+  .login-wrap{overflow:hidden}
+  #loginslot{min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding:28px 12px}
+  #loginslot::-webkit-scrollbar{display:none}
+  @media (max-height:720px){#loginslot{padding:6px 12px}.login{padding:18px 22px 14px!important}.login .logo{margin-bottom:0}.login-wrap{padding:10px}}
+  /* footer fixed just above the tabs */
+  .app-copy{position:fixed;left:0;right:0;bottom:var(--navh,56px);z-index:4;margin:0;padding:6px 0 5px;font-size:12px;background:linear-gradient(to bottom,rgba(244,246,251,0),var(--bg) 45%);pointer-events:none}
+  /* admin: select people, view-as bar */
+  .viewpill{margin-left:8px;background:#fde68a;color:#78350f;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800}
+  .bulkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;flex-wrap:wrap}
+  .bulkbar label{display:flex;align-items:center;gap:8px;font-weight:700}
+  .bulkbar button{width:auto}
+  .bulkbar button:disabled{opacity:.45;cursor:not-allowed}
+  .card.hassel{position:relative;padding-right:52px}
+  .sel{position:absolute;top:14px;right:14px;margin:0}
+  .sel input,.bulkbar input{width:22px;height:22px;margin:0}
   /* teachers, plans and payments */
   header .hl{display:flex;align-items:center;gap:10px;min-width:0} header .hl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   header .hr{display:flex;gap:6px;flex:0 0 auto}
@@ -329,7 +345,7 @@
   .login .helpform .pwrap input{text-align:left;padding-right:56px}
   .login .helpform .pwrap button.eye{width:44px;top:4px;bottom:4px}
   /* install pop-up */
-  #install{position:fixed;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:9000;display:flex;justify-content:center;padding:0 12px;pointer-events:none;transform:translateY(30px);opacity:0;visibility:hidden;transition:transform .4s var(--ease),opacity .4s var(--ease),visibility 0s .4s}
+  #install{position:fixed;left:0;right:0;bottom:calc(var(--navh,56px) + 40px);z-index:9000;display:flex;justify-content:center;padding:0 12px;pointer-events:none;transform:translateY(30px);opacity:0;visibility:hidden;transition:transform .4s var(--ease),opacity .4s var(--ease),visibility 0s .4s}
   #install.on{transform:none;opacity:1;visibility:visible;transition:transform .4s var(--ease),opacity .4s var(--ease)}
   .icard{pointer-events:auto;display:flex;gap:12px;align-items:flex-start;max-width:420px;width:100%;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 12px 12px 14px;box-shadow:0 10px 30px rgba(31,41,55,.22)}
   .iico{flex:0 0 auto;width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font:700 26px Georgia,serif}
@@ -374,7 +390,7 @@ const HELP_ACCESS_KEY = "e9f55ced-6dd6-4b20-be9f-00e3b45beade";
 const UPLOADS = false;
 
 const root = document.getElementById('root');
-const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false };
+const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false, viewing: null };
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- helpers ---------- */
@@ -905,10 +921,34 @@ async function changeCode(id){
   await updateDoc(doc(db, 'users', id), { active: false, replaced: true });
   toast('Code changed'); show();
 }
-const personCard = u => `<div class="card ${u.active ? '' : 'off'}"><h3>${esc(u.name)} ${u.active ? '' : '<span class="chip">Off</span>'}</h3><div class="code">${fmtCode(u.code)}</div>
+const personCard = (u, sel) => `<div class="card ${u.active ? '' : 'off'} ${sel ? 'hassel' : ''}">${sel ? `<label class="sel"><input type="checkbox" class="bsel" value="${u.id}" aria-label="Select ${esc(u.name)}"></label>` : ''}<h3>${esc(u.name)} ${u.active ? '' : '<span class="chip">Inactive</span>'}</h3><div class="code">${fmtCode(u.code)}</div>
   <button class="grey" data-a="rename" data-id="${u.id}">Rename</button><button class="grey" data-a="setcode" data-id="${u.id}">Change code</button>
-  ${u.active ? `<button class="red" data-a="setactive" data-id="${u.id}" data-v="0">Turn off</button>`
-    : `<button class="ok" data-a="setactive" data-id="${u.id}" data-v="1">Turn on</button><button class="red" data-a="deluser" data-id="${u.id}">Delete</button>`}</div>`;
+  ${u.active ? `<button class="grey" data-a="setactive" data-id="${u.id}" data-v="0">Make inactive</button>`
+    : `<button class="ok" data-a="setactive" data-id="${u.id}" data-v="1">Make active</button>`}<button class="red" data-a="deluser" data-id="${u.id}">Delete</button></div>`;
+const bulkBar = label => `<div class="bulkbar"><label><input type="checkbox" id="selall"> Select all</label><button class="red" id="bulkbtn" data-a="${label}" disabled>Delete selected (0)</button></div>`;
+/* deleting more than 5 people needs two warnings (the second one must be typed) */
+function confirmDelete(n, what, always2 = false){
+  if (!confirm('Delete ' + what + ' for good? This cannot be undone.')) return false;
+  if (n <= 5 && !always2) return true;
+  const t = prompt('⚠️ Final warning: ' + what + ' will be removed permanently, with their work and records.\n\nType DELETE to confirm.', '');
+  return (t || '').trim() === 'DELETE';
+}
+const delAll = async q => { const x = await getDocs(q); await Promise.all(x.docs.map(d => deleteDoc(d.ref))); };
+/* remove a student or sub completely: every login record for them, plus their ticks and print requests */
+async function purgePeople(ids){
+  for (const id of ids) {
+    const u = (await getDoc(doc(db, 'users', id))).data(); if (!u) continue;
+    const mine = c => query(collection(db, c), where('tid', '==', S.tid), where('sid', '==', u.sid));
+    await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests'));
+    await deleteDoc(doc(db, 'users', id)).catch(() => {});
+  }
+}
+/* remove a whole teacher: their people and everything they made (payment records are kept) */
+async function purgeTeacher(tid){
+  for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback']) await delAll(query(collection(db, c), where('tid', '==', tid)));
+  await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid));
+  await deleteDoc(doc(db, 'users', tid));
+}
 const ACTIONS = {
   tab: b => { S.fbSent = false; S.tab = b.dataset.k; show(); },
   stay: () => markActive(),
@@ -919,6 +959,7 @@ const ACTIONS = {
   },
   mode: () => {   /* the owner switches between the admin panel and their own classroom */
     S.role = S.role === 'admin' ? 'teacher' : 'admin';
+    S.viewing = null; S.tid = S.user.uid; S.planDate = null;
     S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {};
     if (S.role === 'teacher') startFbWatch(); else startAdminWatch();
     show();
@@ -930,7 +971,7 @@ const ACTIONS = {
     await updateDoc(doc(db, 'users', b.dataset.id), { status: 'active', plan: 'trial', paidUntil: Timestamp.fromMillis(Date.now() + st.trialDays * DAY) });
     toast('Approved'); show();
   },
-  tblock: async b => { if (!confirm('Block this teacher? They and their students and subs will not be able to use the site.')) return; await updateDoc(doc(db, 'users', b.dataset.id), { status: 'blocked' }); show(); },
+  tblock: async b => { if (!confirm('Make this teacher inactive? They and their students and subs cannot use the site until you make them active again.')) return; await updateDoc(doc(db, 'users', b.dataset.id), { status: 'blocked' }); show(); },
   tunblock: async b => {
     const ref = doc(db, 'users', b.dataset.id), u = (await getDoc(ref)).data(), st = await getSettings();
     await updateDoc(ref, u.paidUntil ? { status: 'active' } : { status: 'active', plan: 'trial', paidUntil: Timestamp.fromMillis(Date.now() + st.trialDays * DAY) });
@@ -985,7 +1026,35 @@ const ACTIONS = {
     await updateDoc(ref, { name: n.trim() }); toast('Renamed'); show();
   },
   setactive: async b => { await updateDoc(doc(db, 'users', b.dataset.id), { active: b.dataset.v === '1' }); show(); },
-  deluser: async b => { if (!confirm('Delete this person for good? Their code stops working and cannot be turned back on.')) return; await deleteDoc(doc(db, 'users', b.dataset.id)); show(); },
+  deluser: async b => { if (!confirmDelete(1, 'this person')) return; await purgePeople([b.dataset.id]); toast('Deleted'); show(); },
+  bulkdel: async () => {
+    const ids = [...document.querySelectorAll('.bsel:checked')].map(x => x.value);
+    if (!ids.length) return toast('Tick the students first');
+    if (!confirmDelete(ids.length, ids.length === 1 ? 'this student' : ids.length + ' students')) return;
+    await purgePeople(ids); toast(ids.length + ' deleted'); show();
+  },
+  topen: b => {   /* the owner opens a teacher's class and can change anything in it */
+    S.viewing = { id: b.dataset.id, name: b.dataset.name }; S.tid = b.dataset.id; S.role = 'teacher';
+    S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {}; S.planDate = null;
+    startFbWatch(); show();
+  },
+  trename: async b => {
+    const ref = doc(db, 'users', b.dataset.id), old = (await getDoc(ref)).data();
+    const n = prompt('Teacher name', old.name); if (n === null || !n.trim()) return;
+    await updateDoc(ref, { name: n.trim() }); toast('Renamed'); show();
+  },
+  tdel: async b => {
+    const name = b.dataset.name || 'this teacher';
+    if (!confirmDelete(1, name + ' and their whole class (students, subs, work, reports)', true)) return;
+    await purgeTeacher(b.dataset.id); toast('Teacher deleted'); show();
+  },
+  bulkdelt: async () => {
+    const ids = [...document.querySelectorAll('.bsel:checked')].map(x => x.value);
+    if (!ids.length) return toast('Tick the teachers first');
+    if (!confirmDelete(ids.length, ids.length === 1 ? 'this teacher and their whole class' : ids.length + ' teachers and their whole classes', true)) return;
+    for (const id of ids) await purgeTeacher(id);
+    toast(ids.length + ' deleted'); show();
+  },
   delwork: async b => {
     if (!confirm('Delete this post?')) return;
     const ref = doc(db, 'assignments', b.dataset.id);
@@ -1079,6 +1148,11 @@ document.addEventListener('toggle', e => {
   const b = ED[d.dataset.k]?.[+d.dataset.i]; if (b) b.open = d.open;
 }, true);
 document.addEventListener('change', e => {
+  if (e.target.id === 'selall') document.querySelectorAll('.bsel').forEach(x => { x.checked = e.target.checked; });
+  if (e.target.id === 'selall' || e.target.classList.contains('bsel')) {
+    const n = document.querySelectorAll('.bsel:checked').length, btn = document.getElementById('bulkbtn');
+    if (btn) { btn.disabled = !n; btn.textContent = 'Delete selected (' + n + ')'; }
+  }
   if (e.target.id === 'plandate' && e.target.value) { S.planDate = e.target.value; show(); }
   if (e.target.classList.contains('fileup')) { handleUpload(e.target); }
   if (e.target.classList.contains('subpick')) { ED.planSubs = [...document.querySelectorAll('.subpick:checked')].map(x => x.value); }
@@ -1102,18 +1176,21 @@ function tabsFor(){
 const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
 const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${navBadge(k) ? `<span class="badge">${navBadge(k)}</span>` : ''}`; };
 const FOOT = '<footer class="copy">© 2026 Mr. D. All rights reserved.</footer>';
+function syncNavH(){ const n = root.querySelector('nav'); if (n) document.documentElement.style.setProperty('--navh', n.offsetHeight + 'px'); }
+addEventListener('resize', syncNavH);
 function shell(content){
   const nav = root.querySelector('nav');
   if (nav && root.dataset.role === S.role) {
     /* the header and bottom tabs stay put; only the page content and the highlighted tab change */
-    root.querySelector('main').innerHTML = content + FOOT;
+    root.querySelector('main').innerHTML = content;
     nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tab));
   } else {
     root.dataset.role = S.role;
-    root.innerHTML = `<header><div class="hl"><b>${esc(S.profile.name)}</b><span id="chipslot">${planChip()}</span></div><div class="hr">${S.isAdmin ? `<button class="ghost" data-a="mode" data-nobusy>${S.role === 'admin' ? '📚 My class' : '⚙️ Admin'}</button>` : ''}<button class="ghost" data-a="logout" data-nobusy>Log out</button></div></header>
-      <main>${content}${FOOT}</main>
-      <nav>${tabsFor().map(([k, l]) => `<button data-a="tab" data-k="${k}" data-l="${esc(l)}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav>`;
+    root.innerHTML = `<header><div class="hl"><b>${esc(S.viewing ? S.viewing.name : S.profile.name)}</b>${S.viewing ? '<span class="viewpill">Viewing</span>' : ''}<span id="chipslot">${planChip()}</span></div><div class="hr">${S.isAdmin ? `<button class="ghost" data-a="mode" data-nobusy>${S.role === 'admin' ? '📚 My class' : '⚙️ Admin'}</button>` : ''}<button class="ghost" data-a="logout" data-nobusy>Log out</button></div></header>
+      <main>${content}</main>
+      <nav>${tabsFor().map(([k, l]) => `<button data-a="tab" data-k="${k}" data-l="${esc(l)}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav><footer class="copy app-copy">© 2026 Mr. D. All rights reserved.</footer>`;
   }
+  syncNavH();
   enhance(root);
 }
 async function show(){
@@ -1159,7 +1236,7 @@ const workCard = (a, mine) => `<div class="card ${a.done ? 'done' : ''}">
   ${filesHtml(a.files)}
   ${mine ? `<button class="${a.done ? 'grey' : ''}" data-a="${a.done ? 'undo' : 'done'}" data-id="${a.id}">${a.done ? 'Undo' : '✓ Mark done'}</button>` : ''}</div>`;
 
-const teacherStatus = u => { const ms = msOf(u.paidUntil); return u.status === 'pending' ? ['Waiting', 'y'] : u.status === 'blocked' ? ['Blocked', 'r'] : ms <= Date.now() ? ['Ended', 'r'] : [u.plan === 'paid' ? 'Paid' : 'Free trial', 'g']; };
+const teacherStatus = u => { const ms = msOf(u.paidUntil); return u.status === 'pending' ? ['Waiting', 'y'] : u.status === 'blocked' ? ['Inactive', 'r'] : ms <= Date.now() ? ['Ended', 'r'] : [u.plan === 'paid' ? 'Paid' : 'Free trial', 'g']; };
 const VIEWS = {
   'student:home': async () => {
     const b = await getDoc(doc(db, 'board', S.tid));
@@ -1195,7 +1272,7 @@ const VIEWS = {
       <div class="card"><form data-form="addstudents"><label>Add students: one name per line</label>
         <textarea id="names" data-nofmt placeholder="Aman&#10;Sara&#10;Leo" required></textarea><button>Add &amp; make codes</button></form></div>
       ${list.length ? '<button class="grey" data-a="cards">🖨️ Print code cards</button>' : ''}
-      ${list.map(personCard).join('')}`;
+      ${list.length ? bulkBar('bulkdel') : ''}${list.map(u => personCard(u, true)).join('')}`;
   },
   'teacher:work': async () => {
     S.pendingWork = [];
@@ -1266,13 +1343,13 @@ const VIEWS = {
         <input id="subname" required>
         <label>6-digit code (leave empty for a random one)</label><input id="subcode" inputmode="numeric" maxlength="6" placeholder="optional">
         <button>Make a sub code</button></form></div>
-      ${subs.map(personCard).join('')}
+      ${subs.map(u => personCard(u)).join('')}
       <h2>General class info</h2><p class="muted">Boxes the sub can open: routines, student information, anything else. Use "Add box" for more.</p>
       <div id="ed-info">${editorHtml('info')}</div>
       <h2>Plan for a day</h2><input type="date" id="plandate" value="${S.planDate}">
       <div class="card checks"><b>Who is covering ${esc(fmtDay(S.planDate))}?</b>
         <p class="muted">Only the subs you tick can see this day's plan. Tap Save below to keep it.</p>
-        ${subs.map(s => `<label><input type="checkbox" class="subpick" value="${s.sid}" ${ED.planSubs.includes(s.sid) ? 'checked' : ''}> ${esc(s.name)}${s.active ? '' : ' (off)'}</label>`).join('') || '<p class="muted">Make a sub code first.</p>'}</div>
+        ${subs.map(s => `<label><input type="checkbox" class="subpick" value="${s.sid}" ${ED.planSubs.includes(s.sid) ? 'checked' : ''}> ${esc(s.name)}${s.active ? '' : ' (inactive)'}</label>`).join('') || '<p class="muted">Make a sub code first.</p>'}</div>
       <p class="muted">One box per period. Add a title, instructions, and links to photos or PDFs the sub can print.</p>
       <div id="ed-plan">${editorHtml('plan')}</div>
       ${dates.length ? '<p class="muted">Days with a plan:</p>' + dates.map(d => `<button class="grey" data-a="loadplan" data-d="${d.id}">${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</button>`).join('') : ''}`;
@@ -1316,15 +1393,18 @@ const VIEWS = {
     teachers.sort((a, b) => (b.status === 'pending') - (a.status === 'pending') || (a.name || '').localeCompare(b.name || ''));
     return `<h2>Teachers (${teachers.length})</h2>
       <p class="muted" style="margin-top:-6px">Free trial after approval: ${st.trialDays} days. Price: ${money(st.price)} ${esc(st.currency)} per month. Change these in Settings.</p>
+      ${teachers.length ? bulkBar('bulkdelt') : ''}
       ${teachers.map(u => {
         const [lab, cls] = teacherStatus(u), ms = msOf(u.paidUntil), c = cnt[u.id] || { s: 0, b: 0 };
-        return `<div class="card"><h3>${esc(u.name)} <span class="pill ${cls}">${lab}</span></h3>
+        return `<div class="card hassel"><label class="sel"><input type="checkbox" class="bsel" value="${u.id}" aria-label="Select ${esc(u.name)}"></label><h3>${esc(u.name)} <span class="pill ${cls}">${lab}</span></h3>
           <div class="muted">${esc(u.email)}${u.school ? ' · ' + esc(u.school) : ''}</div>
           <div class="muted">Reference ${esc(u.ref || '')} · ${c.s} student${c.s === 1 ? '' : 's'} · ${c.b} sub${c.b === 1 ? '' : 's'}</div>
           ${ms ? `<div>${daysLeft(ms) > 0 ? daysLeft(ms) + ' days left' : 'Ended'} · until ${fmtDate(ms)}</div>` : ''}
+          <button data-a="topen" data-id="${u.id}" data-name="${esc(u.name)}">Open class</button>
           ${u.status === 'pending' ? `<button class="ok" data-a="tapprove" data-id="${u.id}">Approve (${st.trialDays}-day free trial)</button><button class="red" data-a="tblock" data-id="${u.id}">Reject</button>`
-            : u.status === 'blocked' ? `<button class="ok" data-a="tunblock" data-id="${u.id}">Unblock</button>`
-            : `<button class="grey" data-a="tdays" data-id="${u.id}">± Days</button><button class="red" data-a="tblock" data-id="${u.id}">Block</button>`}</div>`; }).join('') || '<p class="muted">No teachers have signed up yet.</p>'}`;
+            : u.status === 'blocked' ? `<button class="ok" data-a="tunblock" data-id="${u.id}">Make active</button>`
+            : `<button class="grey" data-a="tdays" data-id="${u.id}">± Days</button><button class="grey" data-a="tblock" data-id="${u.id}">Make inactive</button>`}
+          <button class="grey" data-a="trename" data-id="${u.id}">Rename</button><button class="red" data-a="tdel" data-id="${u.id}" data-name="${esc(u.name)}">Delete</button></div>`; }).join('') || '<p class="muted">No teachers have signed up yet.</p>'}`;
   },
   'admin:pay': async () => {
     const [ps, us] = await Promise.all([getDocs(collection(db, 'payments')), getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')))]);
@@ -1404,7 +1484,7 @@ const VIEWS = {
 /* ---------- session ---------- */
 function renderGate(kind){
   const p = S.profile || {};
-  const m = kind === 'pending' ? ['⏳', 'Waiting for approval', 'Thanks for signing up! Your account will be switched on once it is approved.'] : ['⛔', 'Account paused', 'This account is not active. Please contact the site owner.'];
+  const m = kind === 'pending' ? ['⏳', 'Waiting for approval', 'Thanks for signing up! Your account will be switched on once it is approved.'] : ['⛔', 'Account inactive', 'This account is not active right now. Please contact the site owner.'];
   root.classList.remove('out'); delete root.dataset.role;
   root.innerHTML = '<div class="login-wrap"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><div id="loginslot"></div><footer class="copy login-copy">© 2026 Mr. D. All rights reserved.</footer></div>';
   root.querySelector('#loginslot').innerHTML = `<div class="login enter"><div class="logo">${m[0]}</div><h1>${m[1]}</h1><p class="muted">${m[2]}</p>
@@ -1423,7 +1503,7 @@ async function enter(user){
     catch(e) { S.loginWhich = 'teacher'; return out('Owner setup is not finished: paste your user ID into the database rules (see SETUP-MULTI.md).'); }
   }
   if (!p) { S.loginWhich = 'teacher'; return out('This login has no access.'); }
-  S.isAdmin = false; S.locked = null; S.tid = null;
+  S.isAdmin = false; S.locked = null; S.tid = null; S.viewing = null;
   if (p.role === 'student' || p.role === 'sub') {
     if (!p.tid) return out('This code is from the old system. Ask your teacher for a new one.');
     if (!p.active) return out('This code has been turned off. Ask your teacher.');
