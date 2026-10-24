@@ -324,6 +324,8 @@
   /* footer fixed just above the tabs */
   .app-copy{position:fixed;left:0;right:0;bottom:var(--navh,56px);z-index:4;margin:0;padding:6px 0 5px;font-size:12px;background:linear-gradient(to bottom,rgba(244,246,251,0),var(--bg) 45%);pointer-events:none}
   /* admin: select people, view-as bar */
+  .inl{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600}
+  .inl input{width:20px;height:20px;margin:0}
   .viewpill{margin-left:8px;background:#fde68a;color:#78350f;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800}
   .bulkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;flex-wrap:wrap}
   .bulkbar label{display:flex;align-items:center;gap:8px;font-weight:700}
@@ -892,10 +894,11 @@ function editorHtml(k){
       ${UPLOADS ? `<label>Uploaded files (PDF, photo, Word…)</label>
       ${b.files.map((f, j) => `<div class="frow"><span>${fileIcon(f)} ${esc(f.name)}</span><button class="red" data-a="edfiledel" data-k="${k}" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}
       <label class="upl">📎 Upload file<input type="file" class="fileup" multiple hidden accept="${ACCEPT}" data-kind="box" data-k="${k}" data-i="${i}"></label><br>` : ''}
-      <button class="grey" data-a="edup" data-k="${k}" data-i="${i}">↑</button><button class="grey" data-a="eddown" data-k="${k}" data-i="${i}">↓</button><button class="red" data-a="eddel" data-k="${k}" data-i="${i}">Delete box</button>
+      <button class="grey" data-a="edup" data-k="${k}" data-i="${i}">↑</button><button class="grey" data-a="eddown" data-k="${k}" data-i="${i}">↓</button><button class="grey" data-a="eddup" data-k="${k}" data-i="${i}">⧉ Duplicate</button><button class="red" data-a="eddel" data-k="${k}" data-i="${i}">Delete box</button>
     </details>`).join('')
     + `<button data-a="edadd" data-k="${k}">＋ Add box</button><button class="ok" data-a="edsave" data-k="${k}">Save</button>`;
 }
+const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); } };
 function boxesView(items, emptyMsg){
   const list = items.filter(b => b.title || b.text || b.links.length || b.files.length);
@@ -1077,6 +1080,29 @@ const ACTIONS = {
     await Promise.all(s.docs.map(d => updateDoc(d.ref, { status: 'read' })));
   },
   fbdel: b => { if (confirm('Delete this feedback?')) return deleteDoc(doc(db, 'feedback', b.dataset.id)); },
+  eddup: b => {   /* a copy of the box lands right below it, ready to edit */
+    const { k } = b.dataset, i = +b.dataset.i, src = ED[k][i]; if (!src) return;
+    const copy = { ...src, title: src.title ? src.title + ' (copy)' : '', links: src.links.map(l => ({ ...l })), files: src.files.map(f => ({ ...f })), open: true };
+    ED[k].splice(i + 1, 0, copy); redraw(k);
+    const t = document.querySelector(`#ed-${k} details[data-i="${i + 1}"] input[data-f="title"]`);
+    if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); t.focus(); t.select(); }
+    toast('Box duplicated. Tap Save to keep it.');
+  },
+  copyplan: async () => {
+    const to = document.getElementById('copydate').value;
+    if (!to) return toast('Choose a date to copy to');
+    if (to === S.planDate) return toast('That is the same day. Choose another date.');
+    const items = ED.plan.map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
+      .filter(x => x.title || x.text || x.links.length || x.files.length);
+    if (!items.length) return toast('There are no boxes to copy yet');
+    if (items.some(x => x.links.some(l => !safeUrl(l.url)))) return toast('Links must start with http:// or https://');
+    const ref = doc(db, 'subplans', S.tid + '_' + to);
+    if ((await getDoc(ref)).exists() && !confirm(fmtDay(to) + ' already has a plan. Replace it with this one?')) return;
+    const subs = document.getElementById('copysubs').checked ? [...document.querySelectorAll('.subpick:checked')].map(x => x.value) : [];
+    await setDoc(ref, { items, subs, tid: S.tid, date: to, updatedAt: serverTimestamp() });
+    S.planDate = to; S.cache = {};
+    toast('Copied to ' + fmtDay(to) + (subs.length ? '' : '. Now choose who is covering.')); show();
+  },
   edadd: b => { const k = b.dataset.k; ED[k].push({ ...blankBox(), open: true }); redraw(k); },
   eddel: b => { const { k, i } = b.dataset; if (!confirm('Delete this box?')) return; const [gone] = ED[k].splice(+i, 1); ED.trash[k].push(...gone.files.map(f => f.path)); redraw(k); },
   edfiledel: b => { const { k, i, j } = b.dataset; const [f] = ED[k][+i].files.splice(+j, 1); if (f) ED.trash[k].push(f.path); redraw(k); },
@@ -1352,6 +1378,11 @@ const VIEWS = {
         ${subs.map(s => `<label><input type="checkbox" class="subpick" value="${s.sid}" ${ED.planSubs.includes(s.sid) ? 'checked' : ''}> ${esc(s.name)}${s.active ? '' : ' (inactive)'}</label>`).join('') || '<p class="muted">Make a sub code first.</p>'}</div>
       <p class="muted">One box per period. Add a title, instructions, and links to photos or PDFs the sub can print.</p>
       <div id="ed-plan">${editorHtml('plan')}</div>
+      <div class="card"><h3>Copy this day to another date</h3>
+        <p class="muted">Copies every box above, including changes you have not saved yet, to the date you choose.</p>
+        <input type="date" id="copydate" value="${nextDay(S.planDate)}">
+        <label class="inl"><input type="checkbox" id="copysubs"> Also copy who is covering</label>
+        <button data-a="copyplan">Copy plan</button></div>
       ${dates.length ? '<p class="muted">Days with a plan:</p>' + dates.map(d => `<button class="grey" data-a="loadplan" data-d="${d.id}">${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</button>`).join('') : ''}`;
   },
 
