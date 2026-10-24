@@ -289,7 +289,8 @@
   @media (max-width:480px){.frow2{grid-template-columns:1fr}}
   .seg{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 2px}
   .fsec .seg label{flex:1 1 auto;margin:0;text-align:center;padding:10px 14px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-size:15px;font-weight:700;cursor:pointer;transition:border-color .2s,background-color .2s,color .2s,transform .15s}
-  .seg input{position:absolute;opacity:0;pointer-events:none}
+  .seg label{position:relative}
+  .seg input{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;pointer-events:none}   /* the real radio buttons are hidden; they must not be as wide as the screen */
   .fsec .seg.four label{flex:1 1 calc(50% - 8px)}
   @media (min-width:520px){.fsec .seg.four label{flex:1 1 0}}
   .fsec .seg label:active{transform:scale(.96)}
@@ -322,7 +323,7 @@
   #loginslot::-webkit-scrollbar{display:none}
   @media (max-height:720px){#loginslot{padding:6px 12px}.login{padding:18px 22px 14px!important}.login .logo{margin-bottom:0}.login-wrap{padding:10px}}
   /* footer fixed just above the tabs */
-  .app-copy{position:fixed;left:0;right:0;bottom:var(--navh,56px);z-index:4;margin:0;padding:6px 0 5px;font-size:12px;background:linear-gradient(to bottom,rgba(244,246,251,0),var(--bg) 45%);pointer-events:none}
+  .app-copy{position:fixed;left:0;right:0;bottom:var(--navh,56px);z-index:4;margin:0;padding:7px 0 6px;font-size:12px;background:#000;color:#fff;pointer-events:none}
   /* admin: select people, view-as bar */
   .inl{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600}
   .inl input{width:20px;height:20px;margin:0}
@@ -1080,13 +1081,21 @@ const ACTIONS = {
     await Promise.all(s.docs.map(d => updateDoc(d.ref, { status: 'read' })));
   },
   fbdel: b => { if (confirm('Delete this feedback?')) return deleteDoc(doc(db, 'feedback', b.dataset.id)); },
-  eddup: b => {   /* a copy of the box lands right below it, ready to edit */
+  delplan: async () => {
+    const ref = doc(db, 'subplans', S.tid + '_' + S.planDate);
+    if (!confirm('Delete the plan for ' + fmtDay(S.planDate) + '? The subs will no longer see it. This cannot be undone.')) return;
+    const old = (await getDoc(ref)).data();
+    await delFiles((old?.items || []).flatMap(i => (i.files || []).map(f => f.path)));
+    await deleteDoc(ref); S.cache = {};
+    toast('Plan deleted'); show();
+  },
+  eddup: b => {   /* a copy of the box is added at the bottom of the list, ready to edit */
     const { k } = b.dataset, i = +b.dataset.i, src = ED[k][i]; if (!src) return;
-    const copy = { ...src, title: src.title ? src.title + ' (copy)' : '', links: src.links.map(l => ({ ...l })), files: src.files.map(f => ({ ...f })), open: true };
-    ED[k].splice(i + 1, 0, copy); redraw(k);
-    const t = document.querySelector(`#ed-${k} details[data-i="${i + 1}"] input[data-f="title"]`);
-    if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); t.focus(); t.select(); }
-    toast('Box duplicated. Tap Save to keep it.');
+    const copy = { ...src, title: src.title, links: src.links.map(l => ({ ...l })), files: src.files.map(f => ({ ...f })), open: true };
+    ED[k].push(copy); redraw(k);   /* the copy goes to the bottom of the list */
+    const t = document.querySelector(`#ed-${k} details[data-i="${ED[k].length - 1}"] input[data-f="title"]`);
+    if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); t.focus(); }
+    toast('Box duplicated at the bottom. Tap Save to keep it.');
   },
   copyplan: async () => {
     const to = document.getElementById('copydate').value;
@@ -1373,6 +1382,7 @@ const VIEWS = {
       <h2>General class info</h2><p class="muted">Boxes the sub can open: routines, student information, anything else. Use "Add box" for more.</p>
       <div id="ed-info">${editorHtml('info')}</div>
       <h2>Plan for a day</h2><input type="date" id="plandate" value="${S.planDate}">
+      ${plan.exists() ? '<button class="red" data-a="delplan">🗑 Delete this day\'s plan</button>' : ''}
       <div class="card checks"><b>Who is covering ${esc(fmtDay(S.planDate))}?</b>
         <p class="muted">Only the subs you tick can see this day's plan. Tap Save below to keep it.</p>
         ${subs.map(s => `<label><input type="checkbox" class="subpick" value="${s.sid}" ${ED.planSubs.includes(s.sid) ? 'checked' : ''}> ${esc(s.name)}${s.active ? '' : ' (inactive)'}</label>`).join('') || '<p class="muted">Make a sub code first.</p>'}</div>
