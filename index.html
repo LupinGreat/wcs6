@@ -327,6 +327,8 @@
   /* admin: select people, view-as bar */
   .inl{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600}
   .inl input{width:20px;height:20px;margin:0}
+  header{flex-wrap:wrap} header .hl{flex:1 1 0} .savebar{flex:0 0 100%;font-size:12px;font-weight:700;margin-top:3px;color:#fff;opacity:.95} .savebar:empty{display:none}
+  .savebar[data-k=saved],.savebar[data-k=draft],.savebar[data-k=restored]{color:#bbf7d0} .savebar[data-k=warn],.savebar[data-k=error]{color:#fde68a}
   .viewpill{margin-left:8px;background:#fde68a;color:#78350f;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800}
   .bulkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;flex-wrap:wrap}
   .bulkbar label{display:flex;align-items:center;gap:8px;font-weight:700}
@@ -393,7 +395,7 @@ const HELP_ACCESS_KEY = "e9f55ced-6dd6-4b20-be9f-00e3b45beade";
 const UPLOADS = false;
 
 const root = document.getElementById('root');
-const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false, viewing: null };
+const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false, viewing: null, pend: new Set(), saveT: null, saving: false, edTid: null, edDate: null, boardText: '', boardTid: null };
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- helpers ---------- */
@@ -796,7 +798,7 @@ const FORMS = {
       const { code, uid } = await freshAccount();
       await setDoc(doc(db, 'users', uid), { role: 'student', name, code, sid: uid, tid: S.tid, active: true, createdAt: serverTimestamp() });
     }
-    toast(names.length + ' added'); show();
+    clearDraft('addstudents'); toast(names.length + ' added'); show();
   },
   async addsub(f){
     const name = f.querySelector('#subname').value.trim(); if (!name) return;
@@ -804,7 +806,7 @@ const FORMS = {
     if (wanted && !/^\d{6}$/.test(wanted)) return toast('Code must be exactly 6 digits');
     const { code, uid } = await freshAccount(wanted || null);
     await setDoc(doc(db, 'users', uid), { role: 'sub', name, code, sid: uid, tid: S.tid, active: true, createdAt: serverTimestamp() });
-    toast('Sub code created'); show();
+    clearDraft('addsub'); toast('Sub code created'); show();
   },
   async newwork(f){
     const all = f.querySelector('#toall').checked;
@@ -815,7 +817,7 @@ const FORMS = {
       link: f.querySelector('#wlink').value.trim(), due: f.querySelector('#wdue').value, files: S.pendingWork,
       audience: all ? ['all'] : picked, tid: S.tid, createdAt: serverTimestamp()
     });
-    toast('Posted'); show();
+    clearDraft('newwork'); toast('Posted'); show();
   },
   async print(f){
     const url = f.querySelector('#purl').value.trim();
@@ -871,7 +873,7 @@ const FORMS = {
     await setDoc(doc(db, 'settings', 'app'), { price, currency: v('#scur') || 'CAD', trialDays, payEmail: v('#spay') || OWNER_EMAIL, payNote: v('#snote'), updatedAt: serverTimestamp() });
     S.settings = null; toast('Saved');
   },
-  async board(f){ await setDoc(doc(db, 'board', S.tid), { text: f.querySelector('#btext').value, updatedAt: serverTimestamp() }); toast('Saved'); },
+  async board(f){ await setDoc(doc(db, 'board', S.tid), { text: f.querySelector('#btext').value, updatedAt: serverTimestamp() }); S.pend.delete('board'); setSave('saved'); toast('Saved'); },
 };
 
 /* ---------- collapsible boxes (class info + day plan) ---------- */
@@ -900,7 +902,7 @@ function editorHtml(k){
     + `<button data-a="edadd" data-k="${k}">＋ Add box</button><button class="ok" data-a="edsave" data-k="${k}">Save</button>`;
 }
 const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
-const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); } };
+const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); scheduleSave(k); } };
 function boxesView(items, emptyMsg){
   const list = items.filter(b => b.title || b.text || b.links.length || b.files.length);
   if (!list.length) return `<div class="card muted">${emptyMsg}</div>`;
@@ -1019,7 +1021,7 @@ const ACTIONS = {
   fbnew: () => { S.fbSent = false; show(); },
   fbaddrow: () => document.getElementById('fb-rows')?.insertAdjacentHTML('beforeend', concernRow()),
   fbrmrow: b => { b.closest('.crow').remove(); const w = document.getElementById('fb-rows'); if (w && !w.children.length) w.insertAdjacentHTML('beforeend', concernRow()); },
-  logout: async () => { root.classList.add('out'); await new Promise(r => setTimeout(r, 230)); await signOut(auth); },
+  logout: async () => { if (S.pend.size) { try { await flushSaves(); } catch(e) {} } root.classList.add('out'); await new Promise(r => setTimeout(r, 230)); await signOut(auth); },
   done: async b => { const sid = S.profile.sid; confetti(b); await setDoc(doc(db, 'done', sid + '_' + b.dataset.id), { tid: S.tid, sid, aid: b.dataset.id, at: serverTimestamp() }); show(); },
   undo: async b => { await deleteDoc(doc(db, 'done', S.profile.sid + '_' + b.dataset.id)); show(); },
   setcode: b => changeCode(b.dataset.id),
@@ -1126,12 +1128,8 @@ const ACTIONS = {
   edlinkdel: b => { ED[b.dataset.k][+b.dataset.i].links.splice(+b.dataset.j, 1); redraw(b.dataset.k); },
   edsave: async b => {
     const k = b.dataset.k;
-    const items = ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
-      .filter(x => x.title || x.text || x.links.length || x.files.length);
-    if (items.some(x => x.links.some(l => !safeUrl(l.url)))) return toast('Links must start with http:// or https://');
-    const data = k === 'info' ? { items, tid: S.tid, updatedAt: serverTimestamp() } : { items, subs: ED.planSubs, tid: S.tid, date: S.planDate, updatedAt: serverTimestamp() };
-    await setDoc(doc(db, k === 'info' ? 'subinfo' : 'subplans', k === 'info' ? S.tid : S.tid + '_' + S.planDate), data);
-    await delFiles(ED.trash[k]); ED.trash[k] = [];
+    if (!(await saveEditor(k, false))) return;
+    S.pend.delete(k); setSave('saved');
     toast('Saved');
     if (k === 'plan') show();
   },
@@ -1173,10 +1171,13 @@ document.addEventListener('submit', e => {
 document.addEventListener('input', e => {
   const t = e.target; S.dirty = true;
   if (t.closest('.login')) { t.classList.remove('bad'); const er = root.querySelector('.login .err'); if (er) er.textContent = ''; }   /* typing again clears the error */
+  if (t.id === 'btext') { S.boardText = t.value; S.boardTid = S.tid; scheduleSave('board'); return; }
+  const df = t.closest('form[data-form]'); if (df && DRAFTS[df.dataset.form]) saveDraft(df);
   if (!t.dataset.ed) return;
   const b = ED[t.dataset.ed]?.[+t.dataset.i]; if (!b) return;
   if (t.dataset.j !== undefined) { const l = b.links[+t.dataset.j]; if (l) l[t.dataset.f] = t.value; }
   else { b[t.dataset.f] = t.value; if (t.dataset.f === 'title') t.closest('details').querySelector('summary').textContent = t.value || '(untitled)'; }
+  scheduleSave(t.dataset.ed);
 });
 document.addEventListener('toggle', e => {
   const d = e.target; if (!d.dataset || !d.dataset.k) return;
@@ -1190,9 +1191,90 @@ document.addEventListener('change', e => {
   }
   if (e.target.id === 'plandate' && e.target.value) { S.planDate = e.target.value; show(); }
   if (e.target.classList.contains('fileup')) { handleUpload(e.target); }
-  if (e.target.classList.contains('subpick')) { ED.planSubs = [...document.querySelectorAll('.subpick:checked')].map(x => x.value); }
+  if (e.target.classList.contains('subpick')) { ED.planSubs = [...document.querySelectorAll('.subpick:checked')].map(x => x.value); scheduleSave('plan'); }
   if (e.target.id === 'toall') { document.querySelectorAll('.pick').forEach(x => { x.disabled = e.target.checked; if (e.target.checked) x.checked = false; }); }
 });
+
+/* ---------- autosave (sub editors + board), drafts (forms), status line ---------- */
+const AUTOSAVE_TABS = new Set(['sub', 'board']), DRAFT_TABS = new Set(['work', 'students']);
+function idleText(){
+  if (S.role !== 'teacher' || S.locked) return '';
+  if (AUTOSAVE_TABS.has(S.tab)) return '✓ Autosave is on: your changes save by themselves';
+  if (DRAFT_TABS.has(S.tab)) return '✓ Unfinished text is kept as a draft on this device';
+  return '';
+}
+function setSave(kind){
+  const el = document.getElementById('savebar'); if (!el) return;
+  const time = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const T = { saving: 'Saving…', saved: '✓ All changes saved · ' + time, error: '⚠ Could not save yet. Trying again…', warn: '⚠ A link must start with http:// or https:// before it can be saved',
+    draft: '✓ Draft kept on this device', restored: '✓ Your unfinished draft was brought back', idle: idleText() };
+  el.textContent = T[kind] ?? ''; el.dataset.k = kind;
+}
+function cleanItems(k){
+  return ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
+    .filter(x => x.title || x.text || x.links.length || x.files.length);
+}
+/* writes one editor to the database; the teacher and date are the ones the editor was loaded for */
+async function saveEditor(k, auto){
+  const items = cleanItems(k);
+  if (items.some(x => x.links.some(l => !safeUrl(l.url)))) { if (!auto) toast('Links must start with http:// or https://'); return false; }
+  const tid = S.edTid || S.tid, date = S.edDate || S.planDate;
+  const data = k === 'info' ? { items, tid, updatedAt: serverTimestamp() } : { items, subs: ED.planSubs, tid, date, updatedAt: serverTimestamp() };
+  await setDoc(doc(db, k === 'info' ? 'subinfo' : 'subplans', k === 'info' ? tid : tid + '_' + date), data);
+  await delFiles(ED.trash[k]); ED.trash[k] = [];
+  S.cache = {};
+  return true;
+}
+async function saveBoard(){ await setDoc(doc(db, 'board', S.boardTid || S.tid), { text: S.boardText, updatedAt: serverTimestamp() }); S.cache = {}; }
+let flushing = null;
+function scheduleSave(what){
+  S.pend.add(what); setSave('saving');
+  clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 1500);
+}
+async function flushSaves(){
+  clearTimeout(S.saveT);
+  if (flushing) { try { await flushing; } catch(e) {} }
+  if (!S.pend.size) return;
+  const jobs = [...S.pend]; S.pend.clear();
+  flushing = (async () => {
+    setSave('saving');
+    let warn = false;
+    try {
+      for (const j of jobs) { if (j === 'board') await saveBoard(); else if (!(await saveEditor(j, true))) warn = true; }
+      setSave(warn ? 'warn' : 'saved');
+    } catch(e) {
+      console.error('autosave', e);
+      jobs.forEach(j => S.pend.add(j)); setSave('error');
+      clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 5000);
+    }
+  })();
+  try { await flushing; } finally { flushing = null; }
+}
+addEventListener('beforeunload', e => { if (S.pend.size) { e.preventDefault(); e.returnValue = ''; } });
+/* forms that publish something are never sent by themselves; their text is kept on this device until they are sent */
+const DRAFTS = { newwork: ['wtitle', 'wtext', 'wlink', 'wdue'], addstudents: ['names'], addsub: ['subname', 'subcode'] };
+const draftKey = n => 'classroom-draft-' + (S.user?.uid || '') + '-' + S.tid + '-' + n;
+let draftT = null;
+function saveDraft(form){
+  const n = form.dataset.form, ids = DRAFTS[n]; if (!ids) return;
+  clearTimeout(draftT);
+  draftT = setTimeout(() => {
+    const vals = {}; ids.forEach(id => { const el = form.querySelector('#' + id); if (el && el.value) vals[id] = el.value; });
+    try { if (Object.keys(vals).length) localStorage.setItem(draftKey(n), JSON.stringify(vals)); else localStorage.removeItem(draftKey(n)); } catch(e) {}
+    setSave('draft');
+  }, 400);
+}
+function clearDraft(n){ try { localStorage.removeItem(draftKey(n)); } catch(e) {} }
+function restoreDrafts(){
+  Object.keys(DRAFTS).forEach(n => {
+    const f = root.querySelector(`form[data-form="${n}"]`); if (!f) return;
+    let vals = null; try { vals = JSON.parse(localStorage.getItem(draftKey(n)) || 'null'); } catch(e) {}
+    if (!vals) return;
+    let any = false;
+    Object.entries(vals).forEach(([id, v]) => { const el = f.querySelector('#' + id); if (el && !el.value) { el.value = v; any = true; } });
+    if (any) setSave('restored');
+  });
+}
 
 /* ---------- shell ---------- */
 const TABS = {
@@ -1221,14 +1303,17 @@ function shell(content){
     nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tab));
   } else {
     root.dataset.role = S.role;
-    root.innerHTML = `<header><div class="hl"><b>${esc(S.viewing ? S.viewing.name : S.profile.name)}</b>${S.viewing ? '<span class="viewpill">Viewing</span>' : ''}<span id="chipslot">${planChip()}</span></div><div class="hr">${S.isAdmin ? `<button class="ghost" data-a="mode" data-nobusy>${S.role === 'admin' ? '📚 My class' : '⚙️ Admin'}</button>` : ''}<button class="ghost" data-a="logout" data-nobusy>Log out</button></div></header>
+    root.innerHTML = `<header><div class="hl"><b>${esc(S.viewing ? S.viewing.name : S.profile.name)}</b>${S.viewing ? '<span class="viewpill">Viewing</span>' : ''}<span id="chipslot">${planChip()}</span></div><div class="hr">${S.isAdmin ? `<button class="ghost" data-a="mode" data-nobusy>${S.role === 'admin' ? '📚 My class' : '⚙️ Admin'}</button>` : ''}<button class="ghost" data-a="logout" data-nobusy>Log out</button></div><div id="savebar" class="savebar" role="status" aria-live="polite"></div></header>
       <main>${content}</main>
       <nav>${tabsFor().map(([k, l]) => `<button data-a="tab" data-k="${k}" data-l="${esc(l)}" class="${S.tab === k ? 'on' : ''}">${navInner(k, l)}</button>`).join('')}</nav><footer class="copy app-copy">© 2026 Mr. D. All rights reserved.</footer>`;
   }
   syncNavH();
   enhance(root);
+  if (!S.pend.size) setSave('idle');
+  restoreDrafts();
 }
 async function show(){
+  if (S.pend.size || flushing) await flushSaves();   /* never reload a page over text that is still waiting to be saved */
   const my = ++S.rid, key = S.role + ':' + S.tab, fresh = S.shown !== key;
   /* opening a tab again shows what it had last time at once, then quietly swaps in the fresh data */
   const cached = fresh && CACHEABLE.has(key) ? S.cache[key] : undefined;
@@ -1369,7 +1454,7 @@ const VIEWS = {
     const [subs, info, plan, all] = await Promise.all([getUsers('sub', true), getDoc(doc(db, 'subinfo', S.tid)), getDoc(doc(db, 'subplans', S.tid + '_' + S.planDate)), getDocs(byTid('subplans'))]);
     const subName = Object.fromEntries(subs.map(s => [s.sid, s.name]));
     const dates = all.docs.map(d => ({ id: d.data().date, names: (d.data().subs || []).map(x => subName[x] || '?').join(', ') })).sort((a, b) => b.id.localeCompare(a.id));
-    ED.trash = { info: [], plan: [] };
+    ED.trash = { info: [], plan: [] }; S.edTid = S.tid; S.edDate = S.planDate;
     ED.planSubs = plan.exists() ? (plan.data().subs || []) : [];
     ED.info = normItems(info.exists() ? info.data() : null, 'General info');
     if (!ED.info.length) ED.info = [blankBox('Routines'), blankBox('Student information')];
