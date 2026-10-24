@@ -133,6 +133,7 @@
   .lrow input:nth-child(1){flex:1} .lrow input:nth-child(2){flex:2} .lrow button{margin:0}
   button.ok{background:var(--ok)}
   details.box:not([open])>summary::after{content:"Click to expand";float:right;font-weight:400;font-size:13px;color:var(--muted)}
+  details.box[open]>summary::after{content:"Click to close";float:right;font-weight:400;font-size:13px;color:var(--muted)}
   .fmtbar{display:flex;gap:6px;align-items:center;margin-top:4px}
   .fmtbar button{margin:0;padding:4px 14px;background:#e5e7eb;color:var(--ink)}
   .fmtbar span{font-size:12px;color:var(--muted)}
@@ -402,10 +403,23 @@ const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
 /* text formatting: **bold**  *italic*  __underline__  (typed by the B / I / U buttons) */
-const fmt = s => s
-  .replace(/\*\*([^\s*](?:[^*\n]*[^\s*])?)\*\*/g, '<b>$1</b>')
-  .replace(/__([^\s_](?:[^_\n]*[^\s_])?)__/g, '<u>$1</u>')
-  .replace(/\*([^\s*](?:[^*\n]*[^\s*])?)\*/g, '<i>$1</i>');
+/* **bold**, *italic*, __underline__ — any mix, also inside each other. A marker only counts when it has text right next to it and a matching partner on the same line. */
+const fmt = s => {
+  const re = /\*\*|__|\*/g, toks = []; let m;
+  while ((m = re.exec(s))) toks.push({ k: m[0] === '**' ? 'b' : m[0] === '__' ? 'u' : 'i', a: m.index, z: m.index + m[0].length });
+  if (!toks.length) return s;
+  const pend = { b: -1, i: -1, u: -1 }, real = new Set(), ws = c => c === undefined || /\s/.test(c);
+  toks.forEach((t, n) => {
+    const p = pend[t.k];
+    if (p >= 0 && !ws(s[t.a - 1]) && t.a > toks[p].z && !s.slice(toks[p].z, t.a).includes('\n')) { real.add(p); real.add(n); pend[t.k] = -1; }
+    else if (!ws(s[t.z])) pend[t.k] = n;
+  });
+  const act = { b: 0, i: 0, u: 0 };
+  const wrap = x => { if (!x) return ''; let h = x; if (act.u) h = '<u>' + h + '</u>'; if (act.i) h = '<i>' + h + '</i>'; if (act.b) h = '<b>' + h + '</b>'; return h; };
+  let out = '', pos = 0;
+  toks.forEach((t, n) => { if (!real.has(n)) return; out += wrap(s.slice(pos, t.a)); act[t.k] = act[t.k] ? 0 : 1; pos = t.z; });
+  return out + wrap(s.slice(pos));
+};
 const linkify = t => fmt(esc(t)).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const secs = x => x?.createdAt?.seconds || 0;
@@ -520,17 +534,23 @@ const delFiles = paths => !UPLOADS ? Promise.resolve() : Promise.all((paths || [
 /* ---------- text formatting buttons (B / I / U) for every text box ---------- */
 const MARK = { b: '**', i: '*', u: '__' };
 function applyFmt(ta, m){
-  const mk = MARK[m], v = ta.value;
+  const v = ta.value;
   let s = ta.selectionStart, e = ta.selectionEnd;
   while (s < e && /\s/.test(v[s])) s++;
   while (e > s && /\s/.test(v[e - 1])) e--;
   const before = v.slice(0, s), sel = v.slice(s, e), after = v.slice(e);
   let nv, a, z;
-  if (before.endsWith(mk) && after.startsWith(mk) && !(m === 'i' && (before.endsWith('**') || after.startsWith('**')))) {
-    nv = before.slice(0, -mk.length) + sel + after.slice(mk.length); a = s - mk.length; z = a + sel.length;   /* tapped again: remove it */
+  if (m === 'u') {
+    if (before.endsWith('__') && after.startsWith('__')) { nv = before.slice(0, -2) + sel + after.slice(2); a = s - 2; }   /* tapped again: remove it */
+    else { nv = before + '__' + sel + '__' + after; a = s + 2; }
   } else {
-    nv = before + mk + sel + mk + after; a = s + mk.length; z = a + sel.length;
+    /* the stars around the selection tell what is on already: 1 = italic, 2 = bold, 3 = both */
+    const run = (str, fromEnd) => { let n = 0; for (let i = fromEnd ? str.length - 1 : 0; fromEnd ? i >= 0 : i < str.length; fromEnd ? i-- : i++) { if (str[i] === '*') n++; else break; } return n; };
+    const k = Math.min(run(before, true), run(after, false), 3), want = m === 'b' ? 2 : 1, has = m === 'b' ? k >= 2 : k % 2 === 1, star = '*'.repeat(want);
+    if (has) { nv = before.slice(0, -want) + sel + after.slice(want); a = s - want; }
+    else { nv = before + star + sel + star + after; a = s + want; }
   }
+  z = a + sel.length;
   ta.value = nv; ta.focus(); ta.setSelectionRange(a, z);
   ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -1280,7 +1300,7 @@ function restoreDrafts(){
 const TABS = {
   student: [['home', '🏠 Home'], ['work', '📝 My work'], ['print', '🖨️ Print']],
   teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['feedback', '💬 Feedback']],
-  sub: [['day', '📅 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
+  sub: [['day', '📋 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
 };
 function tabsFor(){
   if (S.role === 'admin') return [['teachers', '🧑‍🏫 Teachers'], ['pay', '💳 Payments'], ['settings', '⚙️ Settings']];
