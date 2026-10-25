@@ -144,7 +144,6 @@
   .rte:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(79,70,229,.16)}
   .rte:empty::before{content:attr(data-ph);color:#94a3b8;pointer-events:none}
   .nothing{color:#9ca3af}
-  .dsel{display:flex;gap:6px;margin:4px 0 10px} .dsel select{margin:0;flex:1 1 0;min-width:0}
   .btn.filebtn{text-align:left;max-width:100%;word-break:break-word} .filebtn small{opacity:.75}
   body.noscroll{overflow:hidden}
   .viewer{position:fixed;inset:0;z-index:9000;background:#0b0b10;display:flex;flex-direction:column;color:#fff}
@@ -164,14 +163,6 @@
   .mbox{background:#fff;color:var(--ink);border-radius:14px;padding:16px;max-width:420px;width:100%;max-height:90vh;overflow:auto}
   .mbox button{display:block;width:100%;margin:6px 0}
   .meter{height:10px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:8px} .meter i{display:block;height:100%;background:var(--brand);border-radius:99px} .meter i.hi{background:var(--bad)}
-  .msgs{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px}
-  .bub{max-width:82%;padding:8px 12px;border-radius:14px;background:#e5e7eb;color:var(--ink);align-self:flex-start;word-break:break-word}
-  .bub.mine{align-self:flex-end;background:var(--brand);color:#fff}
-  .bub small{display:block;font-size:11px;opacity:.7;margin-top:2px}
-  .chatform{display:flex;gap:6px;align-items:center}
-  .chatform input{margin:0;flex:1}
-  .chatform button{margin:0}
-  .topic{font-family:ui-monospace,Menlo,monospace;font-weight:700;background:var(--brand2);border-radius:8px;padding:8px 10px;word-break:break-all;margin:6px 0}
   .moods{display:flex;gap:10px;margin:4px 0 12px}
   .moods label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:30px;line-height:1;color:var(--ink);cursor:pointer;padding:6px 10px;border:2px solid var(--line);border-radius:12px;background:#fff}
   .moods label small{font-size:12px;color:var(--muted)}
@@ -243,7 +234,8 @@
   .login.enter>:nth-child(4){animation-delay:.28s} .login.enter>:nth-child(5){animation-delay:.34s} .login.enter>:nth-child(6){animation-delay:.4s}
   .login.shake{animation:shake .45s}
   .login details[open]>form{animation:rise .3s var(--ease) both}
-  #welcome{position:fixed;inset:0;z-index:50;background:var(--night);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;pointer-events:none;animation:welcome 3.5s ease both}
+  #welcome{position:fixed;inset:0;z-index:50;background:var(--night);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;pointer-events:none;animation:welcomein .2s ease backwards}
+  #welcome.bye{opacity:0;transition:opacity .35s ease}
   #welcome .wmoji{font-size:64px;animation:wmoji .8s var(--ease) .1s both}
   #welcome .wtext{font-size:26px;font-weight:800;animation:rise .5s var(--ease) .2s both}
 
@@ -284,7 +276,7 @@
   @keyframes shake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
   @keyframes drift{to{transform:translate(46px,34px) scale(1.12)}}
   @keyframes logo{0%{opacity:0;transform:scale(.4) rotate(-20deg)}60%{opacity:1;transform:scale(1.12) rotate(6deg)}100%{transform:none}}
-  @keyframes welcome{0%{opacity:0}8%{opacity:1}88%{opacity:1}100%{opacity:0}}
+  @keyframes welcomein{from{opacity:0}to{opacity:1}}
   @keyframes wmoji{0%{transform:scale(.3) rotate(-30deg);opacity:0}50%{transform:scale(1.2) rotate(20deg);opacity:1}75%{transform:rotate(-12deg)}100%{transform:none}}
   @keyframes wave{0%,100%{transform:rotate(0)}15%{transform:rotate(16deg)}30%{transform:rotate(-8deg)}45%{transform:rotate(14deg)}60%{transform:rotate(-4deg)}75%{transform:rotate(10deg)}}
   @keyframes dropin{from{opacity:0;transform:translate(-50%,-22px)}to{opacity:1;transform:translate(-50%,0)}}
@@ -472,7 +464,7 @@ function friendly(e){
 /* codes: 6 digits (older 8-letter codes still work) */
 function newCode(){ return String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0'); }
 const fmtCode = c => c.length === 6 ? c.slice(0,3) + ' ' + c.slice(3) : c.slice(0,4) + '-' + c.slice(4);
-const fmtDay = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const fmtDay = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const normCode = s => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 const codeEmail = c => c.toLowerCase() + '@portal.local';
 
@@ -886,7 +878,7 @@ function showAlert(msg, tab = 'feedback'){
   el.innerHTML = '<span>📝 ' + esc(msg) + '</span><button data-a="openfb" data-k="' + tab + '">View</button><button class="ghost" data-a="closealert">✕</button>';
   el.classList.add('show');
 }
-function stopFbWatch(){ stopSubChat(); watchers.forEach(u => { try { u(); } catch(e) {} }); watchers = []; S.fbNew = 0; S.chatNew = 0; S.penNew = 0; S.payNew = 0; document.getElementById('alert').classList.remove('show'); }
+function stopFbWatch(){ watchers.forEach(u => { try { u(); } catch(e) {} }); watchers = []; S.fbNew = 0; S.penNew = 0; S.payNew = 0; document.getElementById('alert').classList.remove('show'); }
 function startFbWatch(){
   stopFbWatch();
   let first = true;
@@ -900,48 +892,7 @@ function startFbWatch(){
     }
     first = false;
   }, err => console.error('feedback watch', err)));
-  /* unread chat messages from subs */
-  let firstC = true;
-  watchers.push(onSnapshot(query(collection(db, 'messages'), where('tid', '==', S.tid), where('from', '==', 'sub'), where('read', '==', false)), snap => {
-    S.chatNew = S.tab === 'chat' ? 0 : snap.size; updateBadge();
-    const added = snap.docChanges().filter(c => c.type === 'added' && !c.doc.metadata.hasPendingWrites);
-    if (S.tab === 'chat' && S.role === 'teacher') { if (snap.size) refreshThreads(); }
-    else if (!firstC) added.forEach(c => showAlert('Message from ' + (c.doc.data().subName || 'a sub'), 'chat'));
-    else if (snap.size) showAlert(snap.size + ' unread message' + (snap.size > 1 ? 's' : '') + ' from subs', 'chat');
-    firstC = false;
-  }, err => console.error('chat watch', err)));
 }
-/* ---------- sub chat ---------- */
-const tsOf = m => m.createdAt?.seconds || Date.now() / 1000;
-const msgHtml = m => {
-  const mineMsg = S.role === 'sub' ? m.from === 'sub' : m.from === 'teacher';
-  return `<div class="bub ${mineMsg ? 'mine' : ''}"><div class="txt">${linkify(m.text || '')}</div><small>${new Date(tsOf(m) * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small></div>`;
-};
-const sortMsgs = list => list.sort((a, b) => tsOf(a) - tsOf(b));
-function fillMsgs(el, list){ const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 60 || !el.children.length; el.innerHTML = sortMsgs(list).map(msgHtml).join(''); if (atEnd) el.scrollTop = el.scrollHeight; }
-/* teacher: redraw every conversation from fresh data and mark the sub's messages as read */
-async function refreshThreads(){
-  if (S.role !== 'teacher' || S.tab !== 'chat') return;
-  const snap = await getDocs(byTid('messages')), all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const boxes = [...document.querySelectorAll('.msgs[data-sid]')];
-  if (all.some(m => !boxes.some(b => b.dataset.sid === m.sid))) { show(); return; }
-  boxes.forEach(b => fillMsgs(b, all.filter(m => m.sid === b.dataset.sid)));
-  all.filter(m => m.from === 'sub' && !m.read).forEach(m => updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {}));
-  S.chatNew = 0; updateBadge();
-}
-/* a free phone alert through ntfy.sh: it only says "new message", never the words themselves */
-async function ntfyPush(topic, title, message){
-  const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic, title, message, tags: ['speech_balloon'], click: location.origin }) });
-  if (!r.ok) throw new Error('ntfy ' + r.status);
-}
-function startSubChat(){
-  const el = document.getElementById('chatlist'); if (!el || S.chatUnsub) return;
-  S.chatUnsub = onSnapshot(query(collection(db, 'messages'), where('tid', '==', S.tid), where('sid', '==', S.profile.sid)), snap => {
-    const box = document.getElementById('chatlist'); if (!box) return;
-    fillMsgs(box, snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, err => console.error('chat', err));
-}
-function stopSubChat(){ if (S.chatUnsub) { try { S.chatUnsub(); } catch(e) {} S.chatUnsub = null; } }
 function startAdminWatch(){
   stopFbWatch();
   let f1 = true, f2 = true;
@@ -961,8 +912,8 @@ function startAdminWatch(){
 /* images show as small pictures (tap to open full size); other files are buttons. All open in a new tab */
 function filesHtml(files){
   return (files || []).filter(f => safeUrl(f.url)).map(f => (isImg(f) || isPdf(f))
-    ? `<button type="button" class="btn filebtn" data-a="viewfile" data-nobusy data-url="${esc(f.url)}" data-name="${esc(f.name)}" data-type="${esc(f.type || '')}">${fileIcon(f)} ${esc(f.name)}${f.size ? ` <small>${mb(f.size)}</small>` : ''}</button>`
-    : `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noopener">${fileIcon(f)} ${esc(f.name)}</a>`).join('');
+    ? `<button type="button" class="btn filebtn" data-a="viewfile" data-nobusy data-url="${esc(f.url)}" data-name="${esc(f.name)}" data-type="${esc(f.type || '')}">${fileIcon(f)} ${esc(f.name)}${f.size ? ` <small>${mb(f.size)}</small>` : ''} <small class="clk">· click to open</small></button>`
+    : `<a class="btn filebtn" href="${esc(f.url)}" target="_blank" rel="noopener">${fileIcon(f)} ${esc(f.name)} <small class="clk">· click to open</small></a>`).join('');
 }
 function renderPending(kind){
   const el = document.getElementById('pend-' + kind); if (!el) return;
@@ -1068,14 +1019,16 @@ function confetti(el){
     document.body.appendChild(p); setTimeout(() => p.remove(), 900);
   }
 }
+/* The welcome screen stays until the first page is ready, but never shorter than 1.25 s and never longer than 3.5 s */
+const WELCOME_MIN = 1250, WELCOME_MAX = 3500;
 function playWelcome(name){
-  if (reduced()) return false;
-  const w = document.createElement('div'); w.id = 'welcome';
+  if (reduced()) return null;
+  const w = document.createElement('div'); w.id = 'welcome'; const t0 = Date.now(); let done = false;
   w.innerHTML = '<div class="wmoji">👋</div><div class="wtext">Welcome, ' + esc(name) + '!</div>';
   document.body.appendChild(w);
-  w.addEventListener('animationend', ev => { if (ev.target === w) w.remove(); });
-  setTimeout(() => w.remove(), 2200);
-  return true;
+  const finish = () => { if (done) return; done = true; setTimeout(() => { w.classList.add('bye'); setTimeout(() => w.remove(), 400); }, Math.max(0, WELCOME_MIN - (Date.now() - t0))); };
+  setTimeout(finish, WELCOME_MAX);
+  return { finish };
 }
 
 function renderLogin(){
@@ -1130,19 +1083,6 @@ function renderLogin(){
     </div></div>`;
 }
 const FORMS = {
-  async chatsend(f){
-    const inp = f.querySelector('input'), text = inp.value.trim(); if (!text) return;
-    const base = { tid: S.tid, text: text.slice(0, 1000), createdAt: serverTimestamp() };
-    if (S.role === 'sub') {
-      await addDoc(collection(db, 'messages'), { ...base, sid: S.profile.sid, subName: S.profile.name, from: 'sub', read: false });
-      inp.value = '';
-      const tp = S.chatPrefs?.topic;
-      if (tp && Date.now() - (S.lastPush || 0) > 30000) { S.lastPush = Date.now(); ntfyPush(tp, 'Class chat', 'New message from ' + S.profile.name + '. Open the class website to read it.').catch(e => console.warn('push', e)); }
-    } else {
-      await addDoc(collection(db, 'messages'), { ...base, sid: f.dataset.sid, subName: f.dataset.name, from: 'teacher', read: true });
-      inp.value = ''; await refreshThreads();
-    }
-  },
   async code(f){
     const raw = f.querySelector('#code').value, c = normCode(raw);
     S.loginMsg = ''; S.loginNote = ''; S.loginWhich = 'code'; S.fresh = true; S.keep = { code: raw };
@@ -1310,21 +1250,6 @@ function editorHtml(k){
     </details>`).join('')
     + `<button data-a="edadd" data-k="${k}">＋ Add box</button><button class="ok" data-a="edsave" data-k="${k}">Save</button>`;
 }
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const opts = (a, b, sel, lab) => { let h = ''; for (let n = a; n <= b; n++) h += `<option value="${n}"${n === sel ? ' selected' : ''}>${lab ? lab(n) : n}</option>`; return h; };
-function dateSel(id, val){
-  const [y, m, d] = val.split('-').map(Number), cy = new Date().getFullYear();
-  return `<div class="dsel" id="${id}"><select data-p="m" aria-label="Month">${opts(1, 12, m, n => MONTHS[n - 1])}</select><select data-p="d" aria-label="Day">${opts(1, new Date(y, m, 0).getDate(), d)}</select><select data-p="y" aria-label="Year">${opts(Math.min(cy - 1, y), Math.max(cy + 3, y), y)}</select></div>`;
-}
-function dsGet(id){
-  const el = document.getElementById(id), q = p => +el.querySelector('[data-p=' + p + ']').value, y = q('y'), m = q('m'), d = Math.min(q('d'), new Date(y, m, 0).getDate());
-  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-}
-function dsSet(id, val){
-  const el = document.getElementById(id); if (!el) return; const [y, m, d] = val.split('-').map(Number);
-  el.querySelector('[data-p=y]').value = y; el.querySelector('[data-p=m]').value = m;
-  const ds = el.querySelector('[data-p=d]'); ds.innerHTML = opts(1, new Date(y, m, 0).getDate(), d);
-}
 const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); persistEd(k); scheduleSave(k); } };
 function boxesView(items, emptyMsg, ctx){
@@ -1372,7 +1297,7 @@ async function purgePeople(ids){
     const u = (await getDoc(doc(db, 'users', id))).data(); if (!u) continue;
     const mine = c => query(collection(db, c), where('tid', '==', S.tid), where('sid', '==', u.sid));
     await delFiles((await getDocs(mine('requests'))).docs.flatMap(d => (d.data().files || []).map(f => f.path)));
-    await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests')); await delAll(mine('messages'));
+    await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests'));
     await deleteDoc(doc(db, 'users', id)).catch(() => {});
   }
 }
@@ -1384,8 +1309,8 @@ async function purgeTeacher(tid){
     const si = await getDoc(doc(db, 'subinfo', tid)); if (si.exists()) (si.data().items || []).forEach(i => (i.files || []).forEach(f => paths.push(f.path)));
     await delFiles(paths);
   }
-  for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback', 'messages']) await delAll(query(collection(db, c), where('tid', '==', tid)));
-  await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid)); await deleteDoc(doc(db, 'prefs', tid));
+  for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback']) await delAll(query(collection(db, c), where('tid', '==', tid)));
+  await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid));
   await deleteDoc(doc(db, 'users', tid));
 }
 const ACTIONS = {
@@ -1403,25 +1328,6 @@ const ACTIONS = {
     S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {};
     if (S.role === 'teacher') startFbWatch(); else startAdminWatch();
     show();
-  },
-  chattoggle: async () => {
-    const ref = doc(db, 'prefs', S.tid), cur = (await getDoc(ref)).data() || {}, on = !cur.chatOn;
-    const topic = cur.topic || 'cp-' + [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join('');
-    await setDoc(ref, { tid: S.tid, chatOn: on, topic }); toast(on ? 'Chat is on' : 'Chat is off'); show();
-  },
-  chatcopy: async () => { const t = document.querySelector('.topic')?.textContent || ''; try { await navigator.clipboard.writeText(t); toast('Copied'); } catch(e) { toast(t); } },
-  chattest: async () => {
-    const t = (await getDoc(doc(db, 'prefs', S.tid))).data()?.topic; if (!t) return;
-    try { await ntfyPush(t, 'Class chat', 'This is a test. Alerts are working.'); toast('Sent. Your phone should buzz in a moment.', 4000); }
-    catch(e) { toast('Could not reach ntfy.sh from here. Check your internet or try another network.', 4500); }
-  },
-  chatnewtopic: async () => {
-    if (!confirm('Make a new topic name? You must subscribe to the new name in the ntfy app.')) return;
-    await updateDoc(doc(db, 'prefs', S.tid), { topic: 'cp-' + [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join('') }); show();
-  },
-  chatclear: async b => {
-    if (!confirm('Delete the whole conversation with ' + (b.dataset.name || 'this sub') + '?')) return;
-    await delAll(query(collection(db, 'messages'), where('tid', '==', S.tid), where('sid', '==', b.dataset.sid))); show();
   },
   recheck: async () => { await enter(auth.currentUser); if (S.locked === 'pending') toast('Still waiting for approval'); },
   copyref: async () => { const t = S.profile?.ref || ''; try { await navigator.clipboard.writeText(t); toast('Copied ' + t); } catch(e) { toast('Your number is ' + t); } },
@@ -1552,7 +1458,7 @@ const ACTIONS = {
     toast('Box duplicated at the bottom. Tap Save to keep it.');
   },
   copyplan: async () => {
-    const to = dsGet('copydate');
+    const to = document.getElementById('copydate').value;
     if (!to) return toast('Choose a date to copy to');
     if (to === S.planDate) return toast('That is the same day. Choose another date.');
     const items = ED.plan.map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, size: f.size || 0, path: f.path, url: f.url })) }))
@@ -1651,11 +1557,9 @@ document.addEventListener('change', e => {
     const n = document.querySelectorAll('.bsel:checked').length, btn = document.getElementById('bulkbtn');
     if (btn) { btn.disabled = !n; btn.textContent = 'Delete selected (' + n + ')'; }
   }
-  const ds = e.target.closest?.('.dsel');
-  if (ds) {
-    const v = dsGet(ds.id); dsSet(ds.id, v);   /* keeps the day valid for the month (for example no 31 June) */
-    if (ds.id === 'plandate' && v !== S.planDate) { if (!leaveOk()) { dsSet('plandate', S.planDate); return; } S.planDate = v; show(); }
-  }
+  const pickDate = v => { if (!v || v === S.planDate) return; if (!leaveOk()) { const a = document.getElementById('plandate'), b = document.getElementById('planpick'); if (a) a.value = S.planDate; if (b) b.value = S.planDate; return; } S.planDate = v; show(); };
+  if (e.target.id === 'plandate') pickDate(e.target.value);
+  if (e.target.id === 'planpick') pickDate(e.target.value);
   if (e.target.classList.contains('fileup')) { handleUpload(e.target); }
   if (e.target.classList.contains('subpick')) { ED.planSubs = [...document.querySelectorAll('.subpick:checked')].map(x => x.value); scheduleSave('plan'); }
   if (e.target.id === 'toall') { document.querySelectorAll('.pick').forEach(x => { x.disabled = e.target.checked; if (e.target.checked) x.checked = false; }); }
@@ -1756,8 +1660,8 @@ function restoreDrafts(){
 /* ---------- shell ---------- */
 const TABS = {
   student: [['home', '🏠 Home'], ['work', '📝 My work'], ['print', '🖨️ Print']],
-  teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['chat', '✉️ Chat'], ['feedback', '💬 Feedback']],
-  sub: [['day', '📋 Day plan'], ['info', 'ℹ️ Class info'], ['chat', '✉️ Chat'], ['feedback', '📝 Feedback']]
+  teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['feedback', '💬 Feedback']],
+  sub: [['day', '📋 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
 };
 function tabsFor(){
   if (S.role === 'admin') return [['teachers', '🧑‍🏫 Teachers'], ['pay', '💳 Payments'], ['settings', '⚙️ Settings']];
@@ -1767,7 +1671,7 @@ function tabsFor(){
   }
   return TABS[S.role];
 }
-const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : k === 'chat' ? S.chatNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
+const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
 const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${navBadge(k) ? `<span class="badge">${navBadge(k)}</span>` : ''}`; };
 const FOOT = '<footer class="copy">© 2026 Mr. D. All rights reserved.</footer>';
 function syncNavH(){ const n = root.querySelector('nav'); if (n) document.documentElement.style.setProperty('--navh', n.offsetHeight + 'px'); }
@@ -1794,7 +1698,6 @@ async function show(){
   saveView();
   if (S.pend.size || flushing) await flushSaves();   /* never reload a page over text that is still waiting to be saved */
   const my = ++S.rid, key = S.role + ':' + S.tab, fresh = S.shown !== key;
-  if (key !== 'sub:chat') stopSubChat();
   /* opening a tab again shows what it had last time at once, then quietly swaps in the fresh data */
   const cached = fresh && CACHEABLE.has(key) ? S.cache[key] : undefined;
   const animate = () => { const m = root.querySelector('main'); m.classList.remove('view-in'); void m.offsetWidth; m.classList.add('view-in'); clearTimeout(S.vt); S.vt = setTimeout(() => m.classList.remove('view-in'), 900); };
@@ -1812,7 +1715,6 @@ async function show(){
   shell(html);
   S.shown = key;
   if (fresh) animate();
-  if (key === 'sub:chat') { stopSubChat(); startSubChat(); }
 }
 /* tabs that only show saved data (the editors and blank forms are always loaded fresh) */
 const CACHEABLE = new Set(['student:home', 'student:work', 'student:print', 'teacher:students', 'teacher:work', 'teacher:print', 'teacher:feedback', 'teacher:board', 'teacher:plan', 'sub:day', 'sub:info', 'admin:teachers', 'admin:pay', 'admin:settings']);
@@ -1930,29 +1832,6 @@ const VIEWS = {
     return `<h2>Classroom board</h2><div class="card"><p class="muted">Everyone sees this on their Home page.</p><form data-form="board">
       <textarea id="btext" style="min-height:220px" placeholder="Today we are…&#10;Reminders…">${esc(b.exists() ? b.data().text : '')}</textarea><button>Save</button></form></div>`;
   },
-  'teacher:chat': async () => {
-    const [pf, ms, subs] = await Promise.all([getDoc(doc(db, 'prefs', S.tid)), getDocs(byTid('messages')), getUsers('sub', true)]);
-    const pr = pf.exists() ? pf.data() : {}, on = !!pr.chatOn;
-    const all = ms.docs.map(d => ({ id: d.id, ...d.data() }));
-    const bySid = {}; all.forEach(m => { (bySid[m.sid] = bySid[m.sid] || []).push(m); });
-    const name = sid => (subs.find(u => u.sid === sid) || {}).name || (bySid[sid].find(m => m.subName) || {}).subName || 'Sub';
-    const sids = Object.keys(bySid).sort((a, b) => Math.max(...bySid[b].map(tsOf)) - Math.max(...bySid[a].map(tsOf)));
-    all.filter(m => m.from === 'sub' && !m.read).forEach(m => updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {}));
-    S.chatNew = 0; updateBadge();
-    return `<h2>Chat with subs</h2>
-      <div class="card"><h3>${on ? '✅ Chat is on' : 'Chat is off'}</h3>
-        <p class="muted">${on ? 'Subs can write to you from the Chat tab of their portal.' : 'While this is off, the sub\'s Chat tab stays empty.'}</p>
-        <button data-a="chattoggle" class="${on ? 'grey' : 'ok'}">${on ? 'Turn chat off' : 'Turn chat on'}</button></div>
-      ${on && pr.topic ? `<div class="card"><h3>📱 Alerts on your phone (optional)</h3>
-        <ol class="steps"><li>Install the free <b>ntfy</b> app (App Store or Google Play).</li>
-          <li>In the app tap <b>+</b> and subscribe to this topic name:<div class="topic">${esc(pr.topic)}</div><button type="button" class="grey" data-a="chatcopy" data-nobusy>Copy name</button></li>
-          <li>Tap the button below. Your phone should buzz.</li></ol>
-        <button data-a="chattest">Send a test alert</button><button class="grey" data-a="chatnewtopic">New topic name</button>
-        <p class="muted">The alert only says that a message arrived. The words stay inside this website. Keep the topic name private, like a password.</p></div>` : ''}
-      ${sids.map(sid => `<div class="card"><h3>${esc(name(sid))}</h3><div class="msgs" data-sid="${esc(sid)}">${sortMsgs(bySid[sid]).map(msgHtml).join('')}</div>
-        <form data-form="chatsend" data-sid="${esc(sid)}" data-name="${esc(name(sid))}" class="chatform"><input maxlength="1000" placeholder="Write a reply…" aria-label="Reply" required><button>Send</button></form>
-        <button class="grey" data-a="chatclear" data-sid="${esc(sid)}" data-name="${esc(name(sid))}">Delete this conversation</button></div>`).join('') || '<p class="muted">No messages yet.</p>'}`;
-  },
   'teacher:sub': async () => {
     S.planDate = S.planDate || todayStr();
     const [subs, info, plan, all] = await Promise.all([getUsers('sub', true), getDoc(doc(db, 'subinfo', S.tid)), getDoc(doc(db, 'subplans', S.tid + '_' + S.planDate)), getDocs(byTid('subplans'))]);
@@ -1974,7 +1853,7 @@ const VIEWS = {
       ${meter}
       <h2>General class info</h2><p class="muted">Boxes the sub can open: routines, student information, anything else. Use "Add box" for more.</p>
       <div id="ed-info">${editorHtml('info')}</div>
-      <h2>Plan for a day</h2>${dateSel('plandate', S.planDate)}
+      <h2>Plan for a day</h2><input type="date" id="plandate" value="${S.planDate}">
       ${plan.exists() ? '<button class="red" data-a="delplan">🗑 Delete this day\'s plan</button>' : ''}
       <div class="card checks"><b>Who is covering ${esc(fmtDay(S.planDate))}?</b>
         <p class="muted">Only the subs you tick can see this day's plan. Tap Save below to keep it.</p>
@@ -1983,10 +1862,10 @@ const VIEWS = {
       <div id="ed-plan">${editorHtml('plan')}</div>
       <div class="card"><h3>Copy this day to another date</h3>
         <p class="muted">Copies every box above, including changes you have not saved yet, to the date you choose.</p>
-        ${dateSel('copydate', nextDay(S.planDate))}
+        <input type="date" id="copydate" value="${nextDay(S.planDate)}">
         <label class="inl"><input type="checkbox" id="copysubs"> Also copy who is covering</label>
         <button data-a="copyplan">Copy plan</button></div>
-      ${dates.length ? '<p class="muted">Days with a plan:</p>' + dates.map(d => `<button class="grey" data-a="loadplan" data-d="${d.id}">${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</button>`).join('') : ''}`;
+      ${dates.length ? `<label for="planpick">Plans already made</label><select id="planpick"><option value="">Choose a plan…</option>${dates.map(d => `<option value="${d.id}"${d.id === S.planDate ? ' selected' : ''}>${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</option>`).join('')}</select>` : ''}`;
   },
 
   /* ---------- teacher: plan and payment ---------- */
@@ -2075,7 +1954,7 @@ const VIEWS = {
     if (!plans.some(p => p.id === S.planDate)) S.planDate = (plans.find(p => p.id >= t) || plans[plans.length - 1]).id;
     const p = plans.find(x => x.id === S.planDate);
     return `<h2>Day plan</h2>
-      ${plans.map(x => `<button class="${x.id === S.planDate ? '' : 'grey'}" data-a="loadplan" data-d="${x.id}">${esc(fmtDay(x.id))}${x.id === t ? ' (today)' : ''}</button>`).join('')}
+      <label for="planpick">Choose a day</label><select id="planpick">${plans.map(x => `<option value="${x.id}"${x.id === S.planDate ? ' selected' : ''}>${esc(fmtDay(x.id))}${x.id === t ? ' (today)' : ''}</option>`).join('')}</select>
       <h3 style="margin-top:12px">${esc(fmtDay(p.id))}</h3>
       ${boxesView(normItems(p, 'Day plan'), 'No details for this day yet. Check Class info.', 'day-' + p.id)}`;
   },
@@ -2108,14 +1987,6 @@ const VIEWS = {
           <label for="fplan">Requested changes to the sub plan <small>(optional)</small></label><textarea id="fplan" data-nofmt style="min-height:64px"></textarea></div>
         <button class="fsubmit">Submit report</button>
       </form>`;
-  },
-  'sub:chat': async () => {
-    const pf = await getDoc(doc(db, 'prefs', S.tid));
-    if (!pf.exists() || !pf.data().chatOn) { S.chatPrefs = null; return '<h2>Chat</h2><div class="card nothing">Nothing to show</div>'; }
-    S.chatPrefs = pf.data();
-    return `<h2>Chat with the teacher</h2><div class="card"><div class="msgs" id="chatlist"></div>
-      <form data-form="chatsend" class="chatform"><input maxlength="1000" placeholder="Write a message…" aria-label="Message" required><button>Send</button></form>
-      <p class="muted" style="margin:8px 0 0">Your teacher is told when you write. Replies show up here.</p></div>`;
   },
   'sub:info': async () => {
     const i = await getDoc(doc(db, 'subinfo', S.tid));
@@ -2165,8 +2036,9 @@ async function enter(user){
   const keys = tabsFor().map(t => t[0]);
   S.tab = sv && sv.role === S.role && keys.includes(sv.tab) ? sv.tab : keys[0]; S.shown = null;
   if (sv && sv.role === S.role && /^\d{4}-\d\d-\d\d$/.test(sv.planDate || '')) S.planDate = sv.planDate;
-  if (S.fresh) { S.fresh = false; if (playWelcome(S.profile.name)) await new Promise(r => setTimeout(r, 190)); }   /* welcome screen covers the switch */
-  show();
+  let wel = null;
+  if (S.fresh) { S.fresh = false; wel = playWelcome(S.profile.name); if (wel) await new Promise(r => setTimeout(r, 190)); }   /* welcome screen covers the switch */
+  const shown = show(); if (wel) shown.finally(wel.finish);
   if (S.role === 'teacher' && !S.locked) startFbWatch(); else if (S.role === 'admin') startAdminWatch(); else stopFbWatch();
 }
 onAuthStateChanged(auth, async user => {
