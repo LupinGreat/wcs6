@@ -144,6 +144,7 @@
   .rte:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(79,70,229,.16)}
   .rte:empty::before{content:attr(data-ph);color:#94a3b8;pointer-events:none}
   .nothing{color:#9ca3af}
+  .dsel{display:flex;gap:6px;margin:4px 0 10px} .dsel select{margin:0;flex:1 1 0;min-width:0}
   .btn.filebtn{text-align:left;max-width:100%;word-break:break-word} .filebtn small{opacity:.75}
   body.noscroll{overflow:hidden}
   .viewer{position:fixed;inset:0;z-index:9000;background:#0b0b10;display:flex;flex-direction:column;color:#fff}
@@ -362,7 +363,7 @@
   .inl{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600}
   .inl input{width:20px;height:20px;margin:0}
   header{flex-wrap:wrap} header .hl{flex:1 1 0} .savebar{flex:0 0 100%;font-size:12px;font-weight:700;margin-top:3px;color:#fff;opacity:.95} .savebar:empty{display:none}
-  .savebar[data-k=saved],.savebar[data-k=draft],.savebar[data-k=restored]{color:#bbf7d0} .savebar[data-k=warn],.savebar[data-k=error]{color:#fde68a}
+  .savebar[data-k=saved],.savebar[data-k=draft],.savebar[data-k=restored]{color:#bbf7d0} .savebar[data-k=warn],.savebar[data-k=error],.savebar[data-k=unsaved]{color:#fde68a} .savenow{margin:0 0 0 8px;padding:2px 12px;font-size:12px;background:#fff;color:var(--brand);border-radius:99px}
   .viewpill{margin-left:8px;background:#fde68a;color:#78350f;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800}
   .bulkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;flex-wrap:wrap}
   .bulkbar label{display:flex;align-items:center;gap:8px;font-weight:700}
@@ -547,8 +548,8 @@ async function getUsers(role, all = false){
 const ACCEPT = '.pdf,image/*';
 const FILE_LIMIT = 150 * 1048576, MAX_FILE = 5 * 1048576;   /* 150 MB of files per teacher; 5 MB per file (after photos are shrunk) */
 const safeName = n => n.replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').slice(-80);
-const isImg = f => (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|heic)$/i.test(f.name || '');
-const isPdf = f => /pdf/i.test((f.type || '') + ' ' + (f.name || ''));
+const isImg = f => f.type ? f.type.startsWith('image/') : /\.(png|jpe?g|gif|webp|heic)$/i.test(f.name || '');
+const isPdf = f => f.type ? f.type === 'application/pdf' : /\.pdf$/i.test(f.name || '');
 const fileIcon = f => isPdf(f) ? '📕' : isImg(f) ? '🖼️' : '📄';
 const mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 /* photos are made smaller before upload (max 2400 px on the long side, high quality): sharp enough to print on a full page */
@@ -576,7 +577,24 @@ async function prepareFiles(list){
   }
   return out;
 }
-async function uploadFiles(files, folder){
+/* asks the teacher what each file should be called; returns the names, or null if cancelled */
+function nameFiles(files){
+  return new Promise(res => {
+    const base = f => f.name.replace(/\.[^.]*$/, '');
+    const el = document.createElement('div'); el.className = 'modal';
+    el.innerHTML = `<div class="mbox"><h3>Name your file${files.length > 1 ? 's' : ''}</h3><p class="muted">This is the name that people will see.</p>
+      ${files.map((f, i) => `<label>${esc(f.name)} · ${mb(f.size)}</label><input data-i="${i}" maxlength="80" value="${esc(base(f))}">`).join('')}
+      <button type="button" data-go="1">Upload</button><button type="button" class="grey" data-go="">Cancel</button></div>`;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button[data-go]'); if (!b) return;
+      const names = b.dataset.go ? [...el.querySelectorAll('input')].map((x, i) => x.value.trim() || base(files[i])) : null;
+      el.remove(); res(names);
+    });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.querySelector('[data-go="1"]').click(); } });
+    document.body.appendChild(el); const first = el.querySelector('input'); first.focus(); first.select();
+  });
+}
+async function uploadFiles(files, folder, names){
   const out = [];
   for (let n = 0; n < files.length; n++) {
     const f = files[n];
@@ -584,7 +602,7 @@ async function uploadFiles(files, folder){
     const path = 't/' + S.tid + '/' + folder + '/' + Date.now() + '-' + n + '-' + safeName(f.name);
     const r = sref(storage, path);
     await uploadBytes(r, f, { contentType: f.type || (isPdf(f) ? 'application/pdf' : 'application/octet-stream'), cacheControl: 'public,max-age=31536000' });
-    out.push({ name: f.name, type: f.type || '', size: f.size, path, url: await getDownloadURL(r) });
+    out.push({ name: (names && names[n]) || f.name, type: f.type || '', size: f.size, path, url: await getDownloadURL(r) });
   }
   if (out.length) toast(out.length + ' uploaded');
   return out;
@@ -595,8 +613,10 @@ async function fileRefs(pre = {}){
   const [pl, inf, as, rq] = await Promise.all([pre.pl || getDocs(byTid('subplans')), pre.inf || getDoc(doc(db, 'subinfo', S.tid)), getDocs(byTid('assignments')), getDocs(byTid('requests'))]);
   const refs = new Map();
   const add = (list, owner) => (list || []).forEach(f => { if (!f || !f.path) return; const e = refs.get(f.path) || { size: f.size || 0, owners: new Set() }; e.owners.add(owner); refs.set(f.path, e); });
-  pl.docs.forEach(d => { const x = d.data(); (x.items || []).forEach(i => add(i.files, 'plan:' + x.date)); });
-  if (inf.exists()) (inf.data().items || []).forEach(i => add(i.files, 'info'));
+  const useED = S.role === 'teacher' && S.tab === 'sub' && S.edTid === S.tid && Array.isArray(ED.plan), edDate = S.edDate || S.planDate;
+  pl.docs.forEach(d => { const x = d.data(); if (useED && x.date === edDate) return; (x.items || []).forEach(i => add(i.files, 'plan:' + x.date)); });
+  if (inf.exists() && !useED) (inf.data().items || []).forEach(i => add(i.files, 'info'));
+  if (useED) { ED.plan.forEach(b => add(b.files, 'plan:' + edDate)); ED.info.forEach(b => add(b.files, 'info')); }   /* what is on screen counts, saved or not */
   as.docs.forEach(d => add(d.data().files, 'work:' + d.id)); rq.docs.forEach(d => add(d.data().files, 'req:' + d.id));
   (S.pendingWork || []).forEach(f => add([f], 'pending'));
   return refs;
@@ -613,6 +633,7 @@ async function delFilesSafe(paths){
   const refs = await fileRefs(); await delFiles(paths.filter(p => !refs.has(p)));
 }
 async function removePlan(date){
+  if (S.role === 'teacher' && S.tab === 'sub' && date === (S.edDate || S.planDate)) { ED.plan = []; ED.planSubs = []; S.pend.delete('plan'); }   /* the open editor must not save it back */
   const ref = doc(db, 'subplans', S.tid + '_' + date), old = (await getDoc(ref)).data();
   await deleteDoc(ref); await delFilesSafe((old?.items || []).flatMap(i => (i.files || []).map(f => f.path)));
 }
@@ -634,7 +655,6 @@ function fullDialog(u, need){
 }
 async function ensureRoom(need){
   for (;;) {
-    if (S.pend.size || flushing) await flushSaves();
     const u = await filesUsage();
     if (u.total + need <= FILE_LIMIT) return true;
     const date = await fullDialog(u, need);
@@ -954,14 +974,16 @@ async function handleUpload(inp){
   const d = inp.dataset; inp.value = '';
   try {
     const files = await prepareFiles(raw); if (!files.length) return;
+    let names = null;   /* teachers choose the name people will see; students keep the file's own name */
+    if (d.kind !== 'print') { names = await nameFiles(files); if (!names) return; }
     /* teachers have 150 MB; if it would not fit they are asked to delete a plan */
     if (d.kind !== 'print' && !(await ensureRoom(files.reduce((n, f) => n + f.size, 0)))) return;
     if (d.kind === 'box') {
       const it = ED[d.k][+d.i]; if (!it) return;
-      const up = await uploadFiles(files, d.k === 'info' ? 'info' : 'plan/' + (S.edDate || S.planDate));
+      const up = await uploadFiles(files, d.k === 'info' ? 'info' : 'plan/' + (S.edDate || S.planDate), names);
       it.files.push(...up); it.open = true; redraw(d.k);
     } else if (d.kind === 'work') {
-      S.pendingWork.push(...await uploadFiles(files, 'work')); renderPending('work');
+      S.pendingWork.push(...await uploadFiles(files, 'work', names)); renderPending('work');
     } else if (d.kind === 'print') {
       S.pendingPrint.push(...await uploadFiles(files, 'prints/' + S.user.uid)); renderPending('print');
     }
@@ -1288,6 +1310,21 @@ function editorHtml(k){
     </details>`).join('')
     + `<button data-a="edadd" data-k="${k}">＋ Add box</button><button class="ok" data-a="edsave" data-k="${k}">Save</button>`;
 }
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const opts = (a, b, sel, lab) => { let h = ''; for (let n = a; n <= b; n++) h += `<option value="${n}"${n === sel ? ' selected' : ''}>${lab ? lab(n) : n}</option>`; return h; };
+function dateSel(id, val){
+  const [y, m, d] = val.split('-').map(Number), cy = new Date().getFullYear();
+  return `<div class="dsel" id="${id}"><select data-p="m" aria-label="Month">${opts(1, 12, m, n => MONTHS[n - 1])}</select><select data-p="d" aria-label="Day">${opts(1, new Date(y, m, 0).getDate(), d)}</select><select data-p="y" aria-label="Year">${opts(Math.min(cy - 1, y), Math.max(cy + 3, y), y)}</select></div>`;
+}
+function dsGet(id){
+  const el = document.getElementById(id), q = p => +el.querySelector('[data-p=' + p + ']').value, y = q('y'), m = q('m'), d = Math.min(q('d'), new Date(y, m, 0).getDate());
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+function dsSet(id, val){
+  const el = document.getElementById(id); if (!el) return; const [y, m, d] = val.split('-').map(Number);
+  el.querySelector('[data-p=y]').value = y; el.querySelector('[data-p=m]').value = m;
+  const ds = el.querySelector('[data-p=d]'); ds.innerHTML = opts(1, new Date(y, m, 0).getDate(), d);
+}
 const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); persistEd(k); scheduleSave(k); } };
 function boxesView(items, emptyMsg, ctx){
@@ -1352,14 +1389,15 @@ async function purgeTeacher(tid){
   await deleteDoc(doc(db, 'users', tid));
 }
 const ACTIONS = {
-  tab: b => { S.fbSent = false; S.tab = b.dataset.k; show(); },
+  tab: b => { if (b.dataset.k !== S.tab && !leaveOk()) return; S.fbSent = false; S.tab = b.dataset.k; show(); },
+  savenow: async () => { await flushSaves(); toast('Saved'); },
   stay: () => markActive(),
   signuptoggle: b => {
     const p = document.getElementById('signuppanel'); p.hidden = !p.hidden;
     b.textContent = p.hidden ? 'New teacher? Create an account' : '✕ Close sign-up';
     if (!p.hidden) setTimeout(() => p.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
   },
-  mode: () => {   /* the owner switches between the admin panel and their own classroom */
+  mode: () => {   if (!leaveOk()) return;   /* the owner switches between the admin panel and their own classroom */
     S.role = S.role === 'admin' ? 'teacher' : 'admin';
     S.viewing = null; S.tid = S.user.uid; S.planDate = null;
     S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {};
@@ -1436,7 +1474,7 @@ const ACTIONS = {
   fbnew: () => { S.fbSent = false; show(); },
   fbaddrow: () => document.getElementById('fb-rows')?.insertAdjacentHTML('beforeend', concernRow()),
   fbrmrow: b => { b.closest('.crow').remove(); const w = document.getElementById('fb-rows'); if (w && !w.children.length) w.insertAdjacentHTML('beforeend', concernRow()); },
-  logout: async () => { if (S.pend.size) { try { await flushSaves(); } catch(e) {} } root.classList.add('out'); await new Promise(r => setTimeout(r, 230)); await signOut(auth); },
+  logout: async () => { if (!leaveOk()) return; root.classList.add('out'); await new Promise(r => setTimeout(r, 230)); await signOut(auth); },
   done: async b => { const sid = S.profile.sid; confetti(b); await setDoc(doc(db, 'done', sid + '_' + b.dataset.id), { tid: S.tid, sid, aid: b.dataset.id, at: serverTimestamp() }); show(); },
   undo: async b => { await deleteDoc(doc(db, 'done', S.profile.sid + '_' + b.dataset.id)); show(); },
   setcode: b => changeCode(b.dataset.id),
@@ -1454,7 +1492,7 @@ const ACTIONS = {
     if (!confirmDelete(ids.length, ids.length === 1 ? 'this student' : ids.length + ' students')) return;
     await purgePeople(ids); toast(ids.length + ' deleted'); show();
   },
-  topen: b => {   /* the owner opens a teacher's class and can change anything in it */
+  topen: b => {   if (!leaveOk()) return;   /* the owner opens a teacher's class and can change anything in it */
     S.viewing = { id: b.dataset.id, name: b.dataset.name }; S.tid = b.dataset.id; S.role = 'teacher';
     S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {}; S.planDate = null;
     startFbWatch(); show();
@@ -1489,9 +1527,9 @@ const ACTIONS = {
     await deleteDoc(ref); show();
   },
   viewfile: b => { if (safeUrl(b.dataset.url)) openViewer({ url: b.dataset.url, name: b.dataset.name, type: b.dataset.type }); },
-  loadplan: b => { S.planDate = b.dataset.d; show(); },
+  loadplan: b => { if (!leaveOk()) return; S.planDate = b.dataset.d; show(); },
   fmt: b => { const r = b.closest('.fmtbar')?.nextElementSibling; if (r && r.classList.contains('rte')) rteFmt(r, b.dataset.m); },
-  openfb: b => { document.getElementById('alert').classList.remove('show'); S.tab = b?.dataset?.k || 'feedback'; show(); },
+  openfb: b => { if (!leaveOk()) return; document.getElementById('alert').classList.remove('show'); S.tab = b?.dataset?.k || 'feedback'; show(); },
   closealert: () => document.getElementById('alert').classList.remove('show'),
   fbread: b => updateDoc(doc(db, 'feedback', b.dataset.id), { status: 'read' }),
   fbreadall: async () => {
@@ -1514,7 +1552,7 @@ const ACTIONS = {
     toast('Box duplicated at the bottom. Tap Save to keep it.');
   },
   copyplan: async () => {
-    const to = document.getElementById('copydate').value;
+    const to = dsGet('copydate');
     if (!to) return toast('Choose a date to copy to');
     if (to === S.planDate) return toast('That is the same day. Choose another date.');
     const items = ED.plan.map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, size: f.size || 0, path: f.path, url: f.url })) }))
@@ -1530,9 +1568,10 @@ const ACTIONS = {
   },
   edadd: b => { const k = b.dataset.k; ED[k].push({ ...blankBox(), open: true }); redraw(k); },
   eddel: b => { const { k, i } = b.dataset; if (!confirm('Delete this box?')) return; const [gone] = ED[k].splice(+i, 1); ED.trash[k].push(...gone.files.map(f => f.path)); redraw(k); },
-  edfiledel: b => { const { k, i, j } = b.dataset; const [f] = ED[k][+i].files.splice(+j, 1); if (f) ED.trash[k].push(f.path); redraw(k); },
+  edfiledel: b => { const { k, i, j } = b.dataset; const nm = ED[k][+i].files[+j]?.name || 'this file'; if (!confirm('Delete the file "' + nm + '"?\n\nIt is removed for good once you tap Save.')) return; const [f] = ED[k][+i].files.splice(+j, 1); if (f) ED.trash[k].push(f.path); redraw(k); },
   pendrm: async b => {
     const list = b.dataset.kind === 'work' ? S.pendingWork : S.pendingPrint;
+    if (!confirm('Delete the file "' + (list[+b.dataset.i]?.name || 'this file') + '"?')) return;
     const [f] = list.splice(+b.dataset.i, 1); renderPending(b.dataset.kind);
     if (f) await delFiles([f.path]);
   },
@@ -1612,7 +1651,11 @@ document.addEventListener('change', e => {
     const n = document.querySelectorAll('.bsel:checked').length, btn = document.getElementById('bulkbtn');
     if (btn) { btn.disabled = !n; btn.textContent = 'Delete selected (' + n + ')'; }
   }
-  if (e.target.id === 'plandate' && e.target.value) { S.planDate = e.target.value; show(); }
+  const ds = e.target.closest?.('.dsel');
+  if (ds) {
+    const v = dsGet(ds.id); dsSet(ds.id, v);   /* keeps the day valid for the month (for example no 31 June) */
+    if (ds.id === 'plandate' && v !== S.planDate) { if (!leaveOk()) { dsSet('plandate', S.planDate); return; } S.planDate = v; show(); }
+  }
   if (e.target.classList.contains('fileup')) { handleUpload(e.target); }
   if (e.target.classList.contains('subpick')) { ED.planSubs = [...document.querySelectorAll('.subpick:checked')].map(x => x.value); scheduleSave('plan'); }
   if (e.target.id === 'toall') { document.querySelectorAll('.pick').forEach(x => { x.disabled = e.target.checked; if (e.target.checked) x.checked = false; }); }
@@ -1622,7 +1665,7 @@ document.addEventListener('change', e => {
 const AUTOSAVE_TABS = new Set(['sub', 'board']), DRAFT_TABS = new Set(['work', 'students']);
 function idleText(){
   if (S.role !== 'teacher' || S.locked) return '';
-  if (AUTOSAVE_TABS.has(S.tab)) return '✓ Autosave is on: your changes save by themselves';
+  if (AUTOSAVE_TABS.has(S.tab)) return AUTOSAVE ? '✓ Autosave is on: your changes save by themselves' : '';
   if (DRAFT_TABS.has(S.tab)) return '✓ Unfinished text is kept as a draft on this device';
   return '';
 }
@@ -1631,7 +1674,9 @@ function setSave(kind){
   const time = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const T = { saving: 'Saving…', saved: '✓ All changes saved · ' + time, error: '⚠ Could not save yet. Trying again…', warn: '⚠ A link must start with http:// or https:// before it can be saved',
     draft: '✓ Draft kept on this device', restored: '✓ Your unfinished draft was brought back', idle: idleText() };
-  el.textContent = T[kind] ?? ''; el.dataset.k = kind;
+  if (kind === 'unsaved') el.innerHTML = '● Changes not saved yet <button class="savenow" data-a="savenow" data-nobusy>Save now</button>';
+  else el.textContent = T[kind] ?? '';
+  el.dataset.k = kind;
 }
 function cleanItems(k){
   return ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, size: f.size || 0, path: f.path, url: f.url })) }))
@@ -1650,9 +1695,18 @@ async function saveEditor(k, auto){
 }
 async function saveBoard(){ await setDoc(doc(db, 'board', S.boardTid || S.tid), { text: S.boardText, updatedAt: serverTimestamp() }); S.cache = {}; }
 let flushing = null;
+/* Saving to the database only happens when the teacher taps Save (every save is a database write).
+   Set AUTOSAVE to true to bring back saving by itself 1.5 seconds after typing stops. */
+const AUTOSAVE = false;
 function scheduleSave(what){
-  S.pend.add(what); setSave('saving');
-  clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 1500);
+  S.pend.add(what); setSave(AUTOSAVE ? 'saving' : 'unsaved');
+  if (AUTOSAVE) { clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 1500); }
+}
+/* before leaving a screen that has changes nobody saved */
+function leaveOk(){
+  if (!S.pend.size) return true;
+  if (!confirm('You have changes that are not saved.\n\nOK = leave and lose them\nCancel = stay (then tap Save)')) return false;
+  S.pend.clear(); setSave('idle'); return true;
 }
 async function flushSaves(){
   clearTimeout(S.saveT);
@@ -1668,7 +1722,7 @@ async function flushSaves(){
     } catch(e) {
       console.error('autosave', e);
       jobs.forEach(j => S.pend.add(j)); setSave('error');
-      clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 5000);
+      if (AUTOSAVE) { clearTimeout(S.saveT); S.saveT = setTimeout(flushSaves, 5000); }
     }
   })();
   try { await flushing; } finally { flushing = null; }
@@ -1920,7 +1974,7 @@ const VIEWS = {
       ${meter}
       <h2>General class info</h2><p class="muted">Boxes the sub can open: routines, student information, anything else. Use "Add box" for more.</p>
       <div id="ed-info">${editorHtml('info')}</div>
-      <h2>Plan for a day</h2><input type="date" id="plandate" value="${S.planDate}">
+      <h2>Plan for a day</h2>${dateSel('plandate', S.planDate)}
       ${plan.exists() ? '<button class="red" data-a="delplan">🗑 Delete this day\'s plan</button>' : ''}
       <div class="card checks"><b>Who is covering ${esc(fmtDay(S.planDate))}?</b>
         <p class="muted">Only the subs you tick can see this day's plan. Tap Save below to keep it.</p>
@@ -1929,7 +1983,7 @@ const VIEWS = {
       <div id="ed-plan">${editorHtml('plan')}</div>
       <div class="card"><h3>Copy this day to another date</h3>
         <p class="muted">Copies every box above, including changes you have not saved yet, to the date you choose.</p>
-        <input type="date" id="copydate" value="${nextDay(S.planDate)}">
+        ${dateSel('copydate', nextDay(S.planDate))}
         <label class="inl"><input type="checkbox" id="copysubs"> Also copy who is covering</label>
         <button data-a="copyplan">Copy plan</button></div>
       ${dates.length ? '<p class="muted">Days with a plan:</p>' + dates.map(d => `<button class="grey" data-a="loadplan" data-d="${d.id}">${esc(fmtDay(d.id))} · ${esc(d.names || 'no sub yet')}</button>`).join('') : ''}`;
@@ -2117,7 +2171,7 @@ async function enter(user){
 }
 onAuthStateChanged(auth, async user => {
   if (S.signingUp) return;   /* the sign-up form finishes the job itself */
-  if (!user) { try { localStorage.removeItem(VIEW_KEY); } catch(e) {} stopFbWatch(); hideIdleWarn(); S.cache = {}; S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
+  if (!user) { S.pend.clear(); try { localStorage.removeItem(VIEW_KEY); } catch(e) {} stopFbWatch(); hideIdleWarn(); S.cache = {}; S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
   if (!S.fresh) {   /* a saved session from an earlier visit: only keep it if it was used in the last 15 minutes */
     const last = store.get();
     if (last && Date.now() - last > IDLE_MS) { S.loginNote = 'You were logged out after 15 minutes of no activity.'; await signOut(auth); return; }
