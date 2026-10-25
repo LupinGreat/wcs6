@@ -144,6 +144,25 @@
   .rte:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(79,70,229,.16)}
   .rte:empty::before{content:attr(data-ph);color:#94a3b8;pointer-events:none}
   .nothing{color:#9ca3af}
+  .btn.filebtn{text-align:left;max-width:100%;word-break:break-word} .filebtn small{opacity:.75}
+  body.noscroll{overflow:hidden}
+  .viewer{position:fixed;inset:0;z-index:9000;background:#0b0b10;display:flex;flex-direction:column;color:#fff}
+  .vbar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#17171f;flex-wrap:wrap}
+  .vname{flex:1 1 140px;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .vtools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1 1 100%}
+  .vtools button,.vtools .vbtn,.vclose{margin:0;padding:7px 12px;background:#2b2b38;color:#fff;border:0;border-radius:8px;font-size:15px;text-decoration:none;cursor:pointer}
+  .vtools button,.vbtn{margin:0;padding:7px 12px;background:#2b2b38;color:#fff;border:0;border-radius:8px;font-size:15px;text-decoration:none;cursor:pointer}
+  .vz{min-width:44px;text-align:center;font-size:13px}
+  .vbody{flex:1;position:relative;overflow:hidden;touch-action:none;min-height:0}
+  .vbody.vpdf{overflow:auto;touch-action:pan-x pan-y;background:#2a2a33}
+  .vpic{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;user-select:none;-webkit-user-drag:none}
+  .vpages{margin:0 auto;padding:8px;width:max-content;min-width:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .vpages canvas{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.5);flex:none}
+  .vwait{padding:40px 20px;text-align:center;color:#cbd5e1}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px}
+  .mbox{background:#fff;color:var(--ink);border-radius:14px;padding:16px;max-width:420px;width:100%;max-height:90vh;overflow:auto}
+  .mbox button{display:block;width:100%;margin:6px 0}
+  .meter{height:10px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:8px} .meter i{display:block;height:100%;background:var(--brand);border-radius:99px} .meter i.hi{background:var(--bad)}
   .msgs{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px}
   .bub{max-width:82%;padding:8px 12px;border-radius:14px;background:#e5e7eb;color:var(--ink);align-self:flex-start;word-break:break-word}
   .bub.mine{align-self:flex-end;background:var(--brand);color:#fff}
@@ -405,9 +424,9 @@ const firebaseConfig = {
    One-time setup: get your free access key at web3forms.com and paste it between the quotes. */
 const HELP_ACCESS_KEY = "e9f55ced-6dd6-4b20-be9f-00e3b45beade";
 
-/* File uploads need Firebase's paid Storage plan. You are on the free plan, so they are switched off
-   and you share files with links (Google Drive). Set this to true only if you ever enable Storage. */
-const UPLOADS = false;
+/* File uploads (photos and PDFs) use Firebase Storage, which needs the Blaze plan (see UPLOADS-SETUP.md).
+   Set this to false to hide every upload button and share files with links only. */
+const UPLOADS = true;
 
 const root = document.getElementById('root');
 const S = { user: null, role: null, profile: null, tab: null, planDate: null, loginMsg: '', pendingWork: [], pendingPrint: [], rid: 0, shown: null, fresh: false, loginEnter: false, tid: null, isAdmin: false, locked: null, settings: null, signingUp: false, penNew: 0, payNew: 0, cache: {}, dirty: false, viewing: null, pend: new Set(), saveT: null, saving: false, edTid: null, edDate: null, boardText: '', boardTid: null };
@@ -441,7 +460,7 @@ let toastTimer;
 function toast(m, ms = 2600){ const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
 function friendly(e){
   const c = e?.code || '';
-  if (c.startsWith('storage/')) return c === 'storage/unauthorized' ? 'Upload not allowed. Check the Storage rules (see UPLOADS-SETUP.md).' : 'Upload problem (' + c.slice(8) + ').';
+  if (c.startsWith('storage/')) return c === 'storage/unauthorized' ? 'Upload not allowed. Check the Storage rules (see UPLOADS-SETUP.md).' : c === 'storage/retry-limit-exceeded' || c === 'storage/unknown' ? 'Upload failed. Check your connection, and that Storage is switched on (see UPLOADS-SETUP.md).' : 'Upload problem (' + c.slice(8) + ').';
   if (c.includes('permission')) return 'Not allowed.';
   if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found') || c.includes('invalid-email')) return "That didn't work. Check it and try again.";
   if (c.includes('email-already-in-use')) return 'That code already exists. Try again.';
@@ -525,25 +544,236 @@ async function getUsers(role, all = false){
 }
 
 /* ---------- file uploads (Firebase Storage) ---------- */
-const ACCEPT = '.pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx';
+const ACCEPT = '.pdf,image/*';
+const FILE_LIMIT = 150 * 1048576, MAX_FILE = 5 * 1048576;   /* 150 MB of files per teacher; 5 MB per file (after photos are shrunk) */
 const safeName = n => n.replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').slice(-80);
-const isImg = f => (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(f.name || '');
-const fileIcon = f => { const s = (f.type || '') + (f.name || ''); return /pdf/i.test(s) ? '📕' : /word|\.docx?$/i.test(s) ? '📘' : '📄'; };
-async function uploadFiles(fileList, folder, maxMb = 20){
-  const files = [...fileList], out = [];
+const isImg = f => (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|heic)$/i.test(f.name || '');
+const isPdf = f => /pdf/i.test((f.type || '') + ' ' + (f.name || ''));
+const fileIcon = f => isPdf(f) ? '📕' : isImg(f) ? '🖼️' : '📄';
+const mb = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+/* photos are made smaller before upload (max 2400 px on the long side, high quality): sharp enough to print on a full page */
+async function shrinkImage(f){
+  if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return f;
+  let bmp; try { bmp = await createImageBitmap(f, { imageOrientation: 'from-image' }); } catch(e) { return f; }
+  const sc = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+  if (sc === 1 && f.size < (f.type === 'image/png' ? 2097152 : 819200)) { bmp.close?.(); return f; }
+  const w = Math.max(1, Math.round(bmp.width * sc)), h = Math.max(1, Math.round(bmp.height * sc));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(bmp, 0, 0, w, h); bmp.close?.();
+  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.88));
+  if (!blob || blob.size > f.size * 0.92) return f;   /* only use the smaller copy if it really is smaller */
+  return new File([blob], f.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
+/* checks the type and size, shrinks photos; returns only the files that can be uploaded */
+async function prepareFiles(list){
+  const out = [];
+  for (const f of list) {
+    if (!(isImg(f) || isPdf(f))) { toast(f.name + ': only photos and PDFs can be uploaded'); continue; }
+    let g = f;
+    if (isImg(f)) { if (f.size > 40 * 1048576) { toast(f.name + ' is too big'); continue; } toast('Preparing ' + f.name + '…', 8000); g = await shrinkImage(f); }
+    if (g.size > MAX_FILE) { toast(f.name + ' is ' + mb(g.size) + '. The limit is ' + mb(MAX_FILE) + '.', 4500); continue; }
+    out.push(g);
+  }
+  return out;
+}
+async function uploadFiles(files, folder){
+  const out = [];
   for (let n = 0; n < files.length; n++) {
     const f = files[n];
-    if (f.size > maxMb * 1048576) { toast(f.name + ' is bigger than ' + maxMb + ' MB'); continue; }
     toast('Uploading ' + (n + 1) + ' of ' + files.length + '…', 60000);
-    const path = folder + '/' + Date.now() + '-' + n + '-' + safeName(f.name);
+    const path = 't/' + S.tid + '/' + folder + '/' + Date.now() + '-' + n + '-' + safeName(f.name);
     const r = sref(storage, path);
-    await uploadBytes(r, f, { contentType: f.type || 'application/octet-stream' });
-    out.push({ name: f.name, type: f.type || '', path, url: await getDownloadURL(r) });
+    await uploadBytes(r, f, { contentType: f.type || (isPdf(f) ? 'application/pdf' : 'application/octet-stream'), cacheControl: 'public,max-age=31536000' });
+    out.push({ name: f.name, type: f.type || '', size: f.size, path, url: await getDownloadURL(r) });
   }
   if (out.length) toast(out.length + ' uploaded');
   return out;
 }
 const delFiles = paths => !UPLOADS ? Promise.resolve() : Promise.all((paths || []).filter(Boolean).map(p => deleteObject(sref(storage, p)).catch(() => {})));
+/* every file this class uses, once each (a copied plan shares its files with the original) */
+async function fileRefs(pre = {}){
+  const [pl, inf, as, rq] = await Promise.all([pre.pl || getDocs(byTid('subplans')), pre.inf || getDoc(doc(db, 'subinfo', S.tid)), getDocs(byTid('assignments')), getDocs(byTid('requests'))]);
+  const refs = new Map();
+  const add = (list, owner) => (list || []).forEach(f => { if (!f || !f.path) return; const e = refs.get(f.path) || { size: f.size || 0, owners: new Set() }; e.owners.add(owner); refs.set(f.path, e); });
+  pl.docs.forEach(d => { const x = d.data(); (x.items || []).forEach(i => add(i.files, 'plan:' + x.date)); });
+  if (inf.exists()) (inf.data().items || []).forEach(i => add(i.files, 'info'));
+  as.docs.forEach(d => add(d.data().files, 'work:' + d.id)); rq.docs.forEach(d => add(d.data().files, 'req:' + d.id));
+  (S.pendingWork || []).forEach(f => add([f], 'pending'));
+  return refs;
+}
+async function filesUsage(pre){
+  const refs = await fileRefs(pre); let total = 0; refs.forEach(e => { total += e.size; });
+  const dates = new Set(); refs.forEach(e => e.owners.forEach(o => { if (o.startsWith('plan:')) dates.add(o.slice(5)); }));
+  const plans = [...dates].map(date => { let bytes = 0; refs.forEach(e => { if (e.owners.size === 1 && e.owners.has('plan:' + date)) bytes += e.size; }); return { date, bytes }; }).filter(p => p.bytes > 0).sort((x, y) => y.bytes - x.bytes);
+  return { total, plans };
+}
+/* delete files, except ones another plan or post still uses */
+async function delFilesSafe(paths){
+  paths = (paths || []).filter(Boolean); if (!UPLOADS || !paths.length) return;
+  const refs = await fileRefs(); await delFiles(paths.filter(p => !refs.has(p)));
+}
+async function removePlan(date){
+  const ref = doc(db, 'subplans', S.tid + '_' + date), old = (await getDoc(ref)).data();
+  await deleteDoc(ref); await delFilesSafe((old?.items || []).flatMap(i => (i.files || []).map(f => f.path)));
+}
+/* shown when an upload would go over the 150 MB: the teacher picks a plan to delete (or cancels) */
+function fullDialog(u, need){
+  return new Promise(res => {
+    const el = document.createElement('div'); el.className = 'modal';
+    el.innerHTML = `<div class="mbox"><h3>Your file space is full</h3><p>You are using <b>${mb(u.total)}</b> of ${mb(FILE_LIMIT)}, and this upload needs ${mb(need)}.</p>
+      <p class="muted">Delete a plan you no longer need to make room. Its files are deleted with it.</p>
+      ${u.plans.slice(0, 12).map(p => `<button type="button" class="red" data-d="${esc(p.date)}">Delete ${esc(fmtDay(p.date))} · frees ${mb(p.bytes)}</button>`).join('') || '<p>No plan has files to delete. Remove files from boxes or posts instead.</p>'}
+      <button type="button" class="grey" data-d="">Cancel</button></div>`;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button[data-d]'); if (!b) return;
+      if (b.dataset.d && !confirm('Delete the plan for ' + fmtDay(b.dataset.d) + '? The subs will no longer see it. This cannot be undone.')) return;
+      el.remove(); res(b.dataset.d || null);
+    });
+    document.body.appendChild(el);
+  });
+}
+async function ensureRoom(need){
+  for (;;) {
+    if (S.pend.size || flushing) await flushSaves();
+    const u = await filesUsage();
+    if (u.total + need <= FILE_LIMIT) return true;
+    const date = await fullDialog(u, need);
+    if (!date) return false;
+    await removePlan(date); S.cache = {};
+    if (S.tab === 'sub' && date === (S.edDate || S.planDate)) { toast('That plan was deleted. Choose your file again.', 4000); show(); return false; }
+    toast('Plan deleted');
+  }
+}
+const meterHtml = u => { const pct = Math.min(100, Math.round(u.total / FILE_LIMIT * 100)); return `<div class="card"><b>📎 File space</b> <span class="muted">${mb(u.total)} of ${mb(FILE_LIMIT)} used</span><div class="meter"><i style="width:${pct}%" class="${pct >= 90 ? 'hi' : ''}"></i></div><p class="muted" style="margin:6px 0 0">Photos are shrunk when you upload them and still print sharp. PDFs can be up to ${mb(MAX_FILE)}. When the space is full you can delete an old plan to make room.</p></div>`; };
+
+/* ---------- full-screen viewer for photos and PDFs: zoom, print, save ---------- */
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfLibP = null;
+function loadPdfJs(){
+  if (pdfLibP) return pdfLibP;
+  pdfLibP = new Promise((res, rej) => {
+    const sc = document.createElement('script'); sc.src = PDFJS + 'pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); };
+    sc.onerror = () => { pdfLibP = null; rej(new Error('viewer')); };
+    document.head.appendChild(sc);
+  });
+  return pdfLibP;
+}
+/* prints pictures (one per page) from a hidden frame, so the print screen shows only the file */
+function printImages(srcs){
+  return new Promise(res => {
+    const fr = document.createElement('iframe'); fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+    const d = fr.contentWindow.document; d.open();
+    d.write('<!doctype html><title>Print</title><style>@page{margin:8mm}body{margin:0}img{display:block;margin:0 auto;max-width:100%;max-height:96vh;object-fit:contain;page-break-after:always}img:last-child{page-break-after:auto}</style>' + srcs.map(u => '<img src="' + u.replace(/"/g, '%22') + '">').join('')); d.close();
+    const imgs = [...d.images]; let left = imgs.length;
+    const go = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch(e) { window.open(srcs[0], '_blank'); } try { window.focus(); } catch(e) {} setTimeout(() => fr.remove(), 60000); res(); };
+    if (!left) return go();
+    imgs.forEach(im => { const done = () => { if (--left === 0) go(); }; if (im.complete) done(); else { im.onload = done; im.onerror = done; } });
+  });
+}
+const V = { el: null, cleanup: null };
+function closeViewer(){ if (V.el) { try { V.cleanup?.(); } catch(e) {} V.el.remove(); V.el = null; V.cleanup = null; document.body.classList.remove('noscroll'); } }
+function openViewer(f){
+  closeViewer();
+  const el = document.createElement('div'); el.className = 'viewer'; V.el = el;
+  el.innerHTML = `<div class="vbar"><span class="vname">${esc(f.name)}</span><button type="button" class="vclose" data-v="close" aria-label="Close">✕</button><span class="vtools"><button type="button" data-v="out" aria-label="Zoom out">−</button><span class="vz">100%</span><button type="button" data-v="in" aria-label="Zoom in">＋</button><button type="button" data-v="fit">Fit</button><button type="button" data-v="print">🖨️ Print</button><a class="vbtn" href="${esc(f.url)}" target="_blank" rel="noopener">⬇ Save</a></span></div><div class="vbody"></div>`;
+  document.body.appendChild(el); document.body.classList.add('noscroll');
+  const body = el.querySelector('.vbody'), zl = el.querySelector('.vz');
+  const ctl = isPdf(f) ? pdfView(f, body, zl) : imgView(f, body, zl);
+  el.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; if (b.dataset.v === 'close') closeViewer(); else ctl[b.dataset.v]?.(); });
+  V.cleanup = () => ctl.destroy?.();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.el) closeViewer(); });
+function imgView(f, body, zl){
+  body.classList.add('vimg');
+  const img = new Image(); img.draggable = false; img.className = 'vpic'; img.alt = f.name; body.appendChild(img);
+  const st = { s: 1, x: 0, y: 0, fit: 1 };
+  const apply = () => { img.style.transform = `translate(${st.x}px,${st.y}px) scale(${st.s})`; zl.textContent = Math.round(st.s / st.fit * 100) + '%'; };
+  const clampPos = () => { const w = img.naturalWidth * st.s, h = img.naturalHeight * st.s, cw = body.clientWidth, ch = body.clientHeight; st.x = w <= cw ? (cw - w) / 2 : Math.min(0, Math.max(cw - w, st.x)); st.y = h <= ch ? (ch - h) / 2 : Math.min(0, Math.max(ch - h, st.y)); };
+  const fit = () => { st.fit = Math.min(body.clientWidth / img.naturalWidth, body.clientHeight / img.naturalHeight) || 1; st.s = st.fit; clampPos(); apply(); };
+  const zoomAt = (ns, cx, cy) => { ns = Math.min(st.fit * 8, Math.max(st.fit, ns)); st.x = cx - (cx - st.x) * ns / st.s; st.y = cy - (cy - st.y) * ns / st.s; st.s = ns; clampPos(); apply(); };
+  img.onload = fit; img.src = f.url;
+  const mid = () => ({ x: body.clientWidth / 2, y: body.clientHeight / 2 });
+  const pts = new Map(); let lastTap = 0, moved = 0;
+  const rel = e => { const r = body.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  body.addEventListener('pointerdown', e => { body.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, rel(e)); moved = 0; });
+  body.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    const p = rel(e), o = pts.get(e.pointerId);
+    if (pts.size === 1) { st.x += p.x - o.x; st.y += p.y - o.y; moved += Math.abs(p.x - o.x) + Math.abs(p.y - o.y); clampPos(); apply(); }
+    else if (pts.size === 2) {
+      const other = [...pts.entries()].find(([id]) => id !== e.pointerId)[1];
+      const d0 = Math.hypot(o.x - other.x, o.y - other.y), d1 = Math.hypot(p.x - other.x, p.y - other.y);
+      moved += 10; if (d0 > 0) zoomAt(st.s * d1 / d0, (p.x + other.x) / 2, (p.y + other.y) / 2);
+    }
+    pts.set(e.pointerId, p);
+  });
+  const up = e => {
+    const p = pts.get(e.pointerId); pts.delete(e.pointerId);
+    if (e.type === 'pointerup' && pts.size === 0 && moved < 8 && p) {
+      const now = Date.now();
+      if (now - lastTap < 320) { if (st.s > st.fit * 1.2) fit(); else zoomAt(st.fit * 2.5, p.x, p.y); lastTap = 0; } else lastTap = now;
+    }
+  };
+  body.addEventListener('pointerup', up); body.addEventListener('pointercancel', up);
+  body.addEventListener('wheel', e => { e.preventDefault(); const p = rel(e); zoomAt(st.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), p.x, p.y); }, { passive: false });
+  const onResize = () => fit(); addEventListener('resize', onResize);
+  return { in: () => { const m = mid(); zoomAt(st.s * 1.4, m.x, m.y); }, out: () => { const m = mid(); zoomAt(st.s / 1.4, m.x, m.y); }, fit,
+    print: () => printImages([f.url]), destroy: () => removeEventListener('resize', onResize) };
+}
+function pdfView(f, body, zl){
+  body.classList.add('vpdf'); body.innerHTML = '<div class="vwait">Loading…</div>';
+  const st = { z: 1, doc: null, token: 0, holder: null };
+  const baseW = () => Math.max(200, Math.min(900, body.clientWidth - 16));
+  async function render(){
+    const my = ++st.token, pdf = st.doc; if (!pdf) return;
+    const fx = body.scrollWidth ? body.scrollLeft / body.scrollWidth : 0, fy = body.scrollHeight ? body.scrollTop / body.scrollHeight : 0;
+    const pages = await Promise.all(Array.from({ length: pdf.numPages }, (_, i) => pdf.getPage(i + 1)));
+    if (my !== st.token) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), holder = document.createElement('div'); holder.className = 'vpages';
+    const jobs = pages.map(pg => {
+      const v1 = pg.getViewport({ scale: 1 }), cssW = baseW() * st.z, k = Math.min(cssW / v1.width * dpr, 3200 / v1.width), vp = pg.getViewport({ scale: k });
+      const cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      cv.style.width = cssW + 'px'; cv.style.height = (cssW * v1.height / v1.width) + 'px'; holder.appendChild(cv);
+      return { pg, cv, vp };
+    });
+    body.replaceChildren(holder); st.holder = holder; zl.textContent = Math.round(st.z * 100) + '%';
+    body.scrollLeft = fx * body.scrollWidth; body.scrollTop = fy * body.scrollHeight;
+    for (const j of jobs) { if (my !== st.token) return; await j.pg.render({ canvasContext: j.cv.getContext('2d'), viewport: j.vp }).promise; }
+  }
+  const setZ = z => { st.z = Math.min(4, Math.max(0.5, z)); render(); };
+  (async () => {
+    try { const lib = await loadPdfJs(); st.doc = await lib.getDocument({ url: f.url }).promise; await render(); }
+    catch(e) { console.error('pdf', e); body.innerHTML = '<div class="vwait">This PDF cannot be shown here. Tap <b>Save</b> to open it.</div>'; }
+  })();
+  /* two fingers zoom (one finger scrolls) */
+  let d0 = 0, ratio = 1;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  body.addEventListener('touchstart', e => { if (e.touches.length === 2) { d0 = dist(e.touches); ratio = 1; } }, { passive: true });
+  body.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && d0 && st.holder) { e.preventDefault(); ratio = dist(e.touches) / d0; st.holder.style.transformOrigin = 'top center'; st.holder.style.transform = 'scale(' + ratio + ')'; }
+  }, { passive: false });
+  body.addEventListener('touchend', e => { if (d0 && e.touches.length < 2) { const r = ratio; d0 = 0; ratio = 1; if (st.holder) st.holder.style.transform = ''; if (Math.abs(r - 1) > 0.05) setZ(st.z * r); } });
+  body.addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); clearTimeout(st.wt); const r = e.deltaY < 0 ? 1.1 : 1 / 1.1; st.pw = (st.pw || 1) * r; st.wt = setTimeout(() => { const k = st.pw; st.pw = 1; setZ(st.z * k); }, 180); } }, { passive: false });
+  const onResize = () => render(); addEventListener('resize', onResize);
+  return {
+    in: () => setZ(st.z * 1.35), out: () => setZ(st.z / 1.35), fit: () => setZ(1),
+    async print(){
+      if (!st.doc) return;
+      try {
+        toast('Getting the pages ready to print…', 30000); const imgs = [];
+        for (let n = 1; n <= st.doc.numPages; n++) {
+          const pg = await st.doc.getPage(n), v1 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: 1700 / v1.width });
+          const cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise; imgs.push(cv.toDataURL('image/jpeg', 0.92));
+        }
+        document.getElementById('toast').classList.remove('show'); await printImages(imgs);
+      } catch(e) { console.error('print', e); window.open(f.url, '_blank'); }
+    },
+    destroy(){ st.token++; removeEventListener('resize', onResize); try { st.doc?.destroy(); } catch(e) {} }
+  };
+}
 
 /* ---------- text formatting for every text box: you see bold / italic / underline as you type ---------- */
 /* The text is stored with **bold**, *italic* and __underline__ marks (so nothing else in the site changes). The box you type in shows the real look. */
@@ -710,8 +940,8 @@ function startAdminWatch(){
 }
 /* images show as small pictures (tap to open full size); other files are buttons. All open in a new tab */
 function filesHtml(files){
-  return (files || []).filter(f => safeUrl(f.url)).map(f => isImg(f)
-    ? `<a class="thumbwrap" href="${esc(f.url)}" target="_blank" rel="noopener"><img class="thumb" loading="lazy" src="${esc(f.url)}" alt=""><span>${esc(f.name)}</span></a>`
+  return (files || []).filter(f => safeUrl(f.url)).map(f => (isImg(f) || isPdf(f))
+    ? `<button type="button" class="btn filebtn" data-a="viewfile" data-nobusy data-url="${esc(f.url)}" data-name="${esc(f.name)}" data-type="${esc(f.type || '')}">${fileIcon(f)} ${esc(f.name)}${f.size ? ` <small>${mb(f.size)}</small>` : ''}</button>`
     : `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noopener">${fileIcon(f)} ${esc(f.name)}</a>`).join('');
 }
 function renderPending(kind){
@@ -720,20 +950,22 @@ function renderPending(kind){
   el.innerHTML = list.map((f, i) => `<div class="frow"><span>${fileIcon(f)} ${esc(f.name)}</span><button type="button" class="red" data-a="pendrm" data-kind="${kind}" data-i="${i}">✕</button></div>`).join('');
 }
 async function handleUpload(inp){
-  const files = inp.files; if (!files || !files.length) return;
-  const d = inp.dataset;
+  const raw = [...(inp.files || [])]; if (!raw.length) return;
+  const d = inp.dataset; inp.value = '';
   try {
+    const files = await prepareFiles(raw); if (!files.length) return;
+    /* teachers have 150 MB; if it would not fit they are asked to delete a plan */
+    if (d.kind !== 'print' && !(await ensureRoom(files.reduce((n, f) => n + f.size, 0)))) return;
     if (d.kind === 'box') {
-      const it = ED[d.k][+d.i];
-      const up = await uploadFiles(files, d.k === 'info' ? 'info' : 'plan/' + S.planDate);
+      const it = ED[d.k][+d.i]; if (!it) return;
+      const up = await uploadFiles(files, d.k === 'info' ? 'info' : 'plan/' + (S.edDate || S.planDate));
       it.files.push(...up); it.open = true; redraw(d.k);
     } else if (d.kind === 'work') {
       S.pendingWork.push(...await uploadFiles(files, 'work')); renderPending('work');
     } else if (d.kind === 'print') {
-      S.pendingPrint.push(...await uploadFiles(files, 'prints/' + S.user.uid, 10)); renderPending('print');
+      S.pendingPrint.push(...await uploadFiles(files, 'prints/' + S.user.uid)); renderPending('print');
     }
   } catch(err) { toast(friendly(err)); }
-  inp.value = '';
 }
 
 /* ---------- auto log-out after 15 minutes without activity ---------- */
@@ -1035,7 +1267,7 @@ const loadView = uid => { const v = lsGet(VIEW_KEY, null); return v && v.uid ===
 const ED = { info: [], plan: [], planSubs: [], trash: { info: [], plan: [] } };
 const blankBox = (title = '') => ({ title, text: '', links: [], files: [], open: false });
 function normItems(d, legacyTitle){
-  if (d && Array.isArray(d.items)) return d.items.map(i => ({ title: i.title || '', text: i.text || '', links: Array.isArray(i.links) ? i.links.map(l => ({ label: l.label || '', url: l.url || '' })) : [], files: Array.isArray(i.files) ? i.files.map(f => ({ name: f.name || '', type: f.type || '', path: f.path || '', url: f.url || '' })) : [], open: false }));
+  if (d && Array.isArray(d.items)) return d.items.map(i => ({ title: i.title || '', text: i.text || '', links: Array.isArray(i.links) ? i.links.map(l => ({ label: l.label || '', url: l.url || '' })) : [], files: Array.isArray(i.files) ? i.files.map(f => ({ name: f.name || '', type: f.type || '', size: f.size || 0, path: f.path || '', url: f.url || '' })) : [], open: false }));
   if (d && d.text) return [{ title: legacyTitle, text: d.text, links: [], files: [], open: false }];  /* old single-textarea data */
   return [];
 }
@@ -1049,8 +1281,8 @@ function editorHtml(k){
       <label>Links to photos / PDFs to print</label>
       ${b.links.map((l, j) => `<div class="lrow"><input data-ed="${k}" data-i="${i}" data-j="${j}" data-f="label" placeholder="Name" value="${esc(l.label)}"><input data-ed="${k}" data-i="${i}" data-j="${j}" data-f="url" type="url" placeholder="https://…" value="${esc(l.url)}"><button class="red" data-a="edlinkdel" data-k="${k}" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}
       <button class="grey" data-a="edlinkadd" data-k="${k}" data-i="${i}">＋ Add link</button><br>
-      ${UPLOADS ? `<label>Uploaded files (PDF, photo, Word…)</label>
-      ${b.files.map((f, j) => `<div class="frow"><span>${fileIcon(f)} ${esc(f.name)}</span><button class="red" data-a="edfiledel" data-k="${k}" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}
+      ${UPLOADS ? `<label>Files (photos or PDFs)</label>
+      ${b.files.map((f, j) => `<div class="frow"><span>${fileIcon(f)} ${esc(f.name)}${f.size ? ' · ' + mb(f.size) : ''}</span><button class="red" data-a="edfiledel" data-k="${k}" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}
       <label class="upl">📎 Upload file<input type="file" class="fileup" multiple hidden accept="${ACCEPT}" data-kind="box" data-k="${k}" data-i="${i}"></label><br>` : ''}
       <button class="grey" data-a="edup" data-k="${k}" data-i="${i}">↑</button><button class="grey" data-a="eddown" data-k="${k}" data-i="${i}">↓</button><button class="grey" data-a="eddup" data-k="${k}" data-i="${i}">⧉ Duplicate</button><button class="red" data-a="eddel" data-k="${k}" data-i="${i}">Delete box</button>
     </details>`).join('')
@@ -1102,12 +1334,19 @@ async function purgePeople(ids){
   for (const id of ids) {
     const u = (await getDoc(doc(db, 'users', id))).data(); if (!u) continue;
     const mine = c => query(collection(db, c), where('tid', '==', S.tid), where('sid', '==', u.sid));
+    await delFiles((await getDocs(mine('requests'))).docs.flatMap(d => (d.data().files || []).map(f => f.path)));
     await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests')); await delAll(mine('messages'));
     await deleteDoc(doc(db, 'users', id)).catch(() => {});
   }
 }
 /* remove a whole teacher: their people and everything they made (payment records are kept) */
 async function purgeTeacher(tid){
+  if (UPLOADS) {
+    const paths = [];
+    for (const c of ['subplans', 'assignments', 'requests']) (await getDocs(query(collection(db, c), where('tid', '==', tid)))).docs.forEach(d => { const x = d.data(); (x.files || []).forEach(f => paths.push(f.path)); (x.items || []).forEach(i => (i.files || []).forEach(f => paths.push(f.path))); });
+    const si = await getDoc(doc(db, 'subinfo', tid)); if (si.exists()) (si.data().items || []).forEach(i => (i.files || []).forEach(f => paths.push(f.path)));
+    await delFiles(paths);
+  }
   for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback', 'messages']) await delAll(query(collection(db, c), where('tid', '==', tid)));
   await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid)); await deleteDoc(doc(db, 'prefs', tid));
   await deleteDoc(doc(db, 'users', tid));
@@ -1249,6 +1488,7 @@ const ACTIONS = {
     await delFiles(((await getDoc(ref)).data()?.files || []).map(f => f.path));
     await deleteDoc(ref); show();
   },
+  viewfile: b => { if (safeUrl(b.dataset.url)) openViewer({ url: b.dataset.url, name: b.dataset.name, type: b.dataset.type }); },
   loadplan: b => { S.planDate = b.dataset.d; show(); },
   fmt: b => { const r = b.closest('.fmtbar')?.nextElementSibling; if (r && r.classList.contains('rte')) rteFmt(r, b.dataset.m); },
   openfb: b => { document.getElementById('alert').classList.remove('show'); S.tab = b?.dataset?.k || 'feedback'; show(); },
@@ -1262,9 +1502,7 @@ const ACTIONS = {
   delplan: async () => {
     const ref = doc(db, 'subplans', S.tid + '_' + S.planDate);
     if (!confirm('Delete the plan for ' + fmtDay(S.planDate) + '? The subs will no longer see it. This cannot be undone.')) return;
-    const old = (await getDoc(ref)).data();
-    await delFiles((old?.items || []).flatMap(i => (i.files || []).map(f => f.path)));
-    await deleteDoc(ref); S.cache = {};
+    await removePlan(S.planDate); S.cache = {};
     toast('Plan deleted'); show();
   },
   eddup: b => {   /* a copy of the box is added at the bottom of the list, ready to edit */
@@ -1279,7 +1517,7 @@ const ACTIONS = {
     const to = document.getElementById('copydate').value;
     if (!to) return toast('Choose a date to copy to');
     if (to === S.planDate) return toast('That is the same day. Choose another date.');
-    const items = ED.plan.map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
+    const items = ED.plan.map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, size: f.size || 0, path: f.path, url: f.url })) }))
       .filter(x => x.title || x.text || x.links.length || x.files.length);
     if (!items.length) return toast('There are no boxes to copy yet');
     if (items.some(x => x.links.some(l => !safeUrl(l.url)))) return toast('Links must start with http:// or https://');
@@ -1396,7 +1634,7 @@ function setSave(kind){
   el.textContent = T[kind] ?? ''; el.dataset.k = kind;
 }
 function cleanItems(k){
-  return ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, path: f.path, url: f.url })) }))
+  return ED[k].map(x => ({ title: x.title.trim(), text: x.text.trim(), links: x.links.map(l => ({ label: l.label.trim(), url: l.url.trim() })).filter(l => l.url), files: x.files.map(f => ({ name: f.name, type: f.type, size: f.size || 0, path: f.path, url: f.url })) }))
     .filter(x => x.title || x.text || x.links.length || x.files.length);
 }
 /* writes one editor to the database; the teacher and date are the ones the editor was loaded for */
@@ -1406,7 +1644,7 @@ async function saveEditor(k, auto){
   const tid = S.edTid || S.tid, date = S.edDate || S.planDate;
   const data = k === 'info' ? { items, tid, updatedAt: serverTimestamp() } : { items, subs: ED.planSubs, tid, date, updatedAt: serverTimestamp() };
   await setDoc(doc(db, k === 'info' ? 'subinfo' : 'subplans', k === 'info' ? tid : tid + '_' + date), data);
-  await delFiles(ED.trash[k]); ED.trash[k] = [];
+  await delFilesSafe(ED.trash[k]); ED.trash[k] = [];
   S.cache = {};
   return true;
 }
@@ -1593,7 +1831,7 @@ const VIEWS = {
       <label>Title</label><input id="wtitle" required>
       <label>Instructions (optional)</label><textarea id="wtext"></textarea>
       <label>Link to photo / PDF / Google Doc (optional)</label><input id="wlink" type="url" placeholder="https://…">
-      ${UPLOADS ? `<label>Upload files: PDF, photo, Word… (optional)</label><div id="pend-work"></div>
+      ${UPLOADS ? `<label>Upload photos or PDFs (optional)</label><div id="pend-work"></div>
       <label class="upl">📎 Upload file<input type="file" class="fileup" multiple hidden accept="${ACCEPT}" data-kind="work"></label><br>` : ''}
       <label>Due date (optional)</label><input id="wdue" type="date">
       <label>For</label><div class="checks"><label><input type="checkbox" id="toall" checked> Whole class</label>
@@ -1671,6 +1909,7 @@ const VIEWS = {
     ED.info = normItems(info.exists() ? info.data() : null, 'General info');
     if (!ED.info.length) ED.info = [blankBox('Routines'), blankBox('Student information')];
     ED.plan = normItems(plan.exists() ? plan.data() : null, 'Day plan');
+    const meter = UPLOADS ? meterHtml(await filesUsage({ pl: all, inf: info })) : '';
     const oi = getOpen('ed-info'), op = getOpen('ed-plan-' + S.planDate);
     ED.info.forEach((b, i) => { b.open = oi.includes(i); }); ED.plan.forEach((b, i) => { b.open = op.includes(i); });
     return `<h2>Sub codes</h2><div class="card"><form data-form="addsub"><label>Name or label (e.g. "Mrs. Lee" or "Monday sub")</label>
@@ -1678,6 +1917,7 @@ const VIEWS = {
         <label>6-digit code (leave empty for a random one)</label><input id="subcode" inputmode="numeric" maxlength="6" placeholder="optional">
         <button>Make a sub code</button></form></div>
       ${subs.map(u => personCard(u)).join('')}
+      ${meter}
       <h2>General class info</h2><p class="muted">Boxes the sub can open: routines, student information, anything else. Use "Add box" for more.</p>
       <div id="ed-info">${editorHtml('info')}</div>
       <h2>Plan for a day</h2><input type="date" id="plandate" value="${S.planDate}">
