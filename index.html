@@ -134,10 +134,24 @@
   button.ok{background:var(--ok)}
   details.box:not([open])>summary::after{content:"Click to expand";float:right;font-weight:400;font-size:13px;color:var(--muted)}
   details.box[open]>summary::after{content:"Click to close";float:right;font-weight:400;font-size:13px;color:var(--muted)}
-  .fmtbar{display:flex;gap:6px;align-items:center;margin-top:4px}
-  .fmtbar button{margin:0;padding:4px 14px;background:#e5e7eb;color:var(--ink)}
+  .fmtbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+  .fmtbar button{margin:0;padding:4px 10px;background:#e5e7eb;color:var(--ink);line-height:1.2}
+  .fmtbar button small{font-size:10px;font-weight:400;color:var(--muted);margin-left:5px;letter-spacing:.2px}
+  .fmtbar button.on{background:var(--brand);color:#fff} .fmtbar button.on small{color:#e0e7ff}
   .fmtbar span{font-size:12px;color:var(--muted)}
-  .fmtbar+textarea{margin-top:4px}
+  textarea[data-tb]{display:none}
+  .rte{width:100%;min-height:90px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;margin:4px 0 10px;background:#fff;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;transition:border-color .2s,box-shadow .2s}
+  .rte:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(79,70,229,.16)}
+  .rte:empty::before{content:attr(data-ph);color:#94a3b8;pointer-events:none}
+  .nothing{color:#9ca3af}
+  .msgs{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px}
+  .bub{max-width:82%;padding:8px 12px;border-radius:14px;background:#e5e7eb;color:var(--ink);align-self:flex-start;word-break:break-word}
+  .bub.mine{align-self:flex-end;background:var(--brand);color:#fff}
+  .bub small{display:block;font-size:11px;opacity:.7;margin-top:2px}
+  .chatform{display:flex;gap:6px;align-items:center}
+  .chatform input{margin:0;flex:1}
+  .chatform button{margin:0}
+  .topic{font-family:ui-monospace,Menlo,monospace;font-weight:700;background:var(--brand2);border-radius:8px;padding:8px 10px;word-break:break-all;margin:6px 0}
   .moods{display:flex;gap:10px;margin:4px 0 12px}
   .moods label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:30px;line-height:1;color:var(--ink);cursor:pointer;padding:6px 10px;border:2px solid var(--line);border-radius:12px;background:#fff}
   .moods label small{font-size:12px;color:var(--muted)}
@@ -531,35 +545,82 @@ async function uploadFiles(fileList, folder, maxMb = 20){
 }
 const delFiles = paths => !UPLOADS ? Promise.resolve() : Promise.all((paths || []).filter(Boolean).map(p => deleteObject(sref(storage, p)).catch(() => {})));
 
-/* ---------- text formatting buttons (B / I / U) for every text box ---------- */
-const MARK = { b: '**', i: '*', u: '__' };
-function applyFmt(ta, m){
-  const v = ta.value;
-  let s = ta.selectionStart, e = ta.selectionEnd;
-  while (s < e && /\s/.test(v[s])) s++;
-  while (e > s && /\s/.test(v[e - 1])) e--;
-  const before = v.slice(0, s), sel = v.slice(s, e), after = v.slice(e);
-  let nv, a, z;
-  if (m === 'u') {
-    if (before.endsWith('__') && after.startsWith('__')) { nv = before.slice(0, -2) + sel + after.slice(2); a = s - 2; }   /* tapped again: remove it */
-    else { nv = before + '__' + sel + '__' + after; a = s + 2; }
-  } else {
-    /* the stars around the selection tell what is on already: 1 = italic, 2 = bold, 3 = both */
-    const run = (str, fromEnd) => { let n = 0; for (let i = fromEnd ? str.length - 1 : 0; fromEnd ? i >= 0 : i < str.length; fromEnd ? i-- : i++) { if (str[i] === '*') n++; else break; } return n; };
-    const k = Math.min(run(before, true), run(after, false), 3), want = m === 'b' ? 2 : 1, has = m === 'b' ? k >= 2 : k % 2 === 1, star = '*'.repeat(want);
-    if (has) { nv = before.slice(0, -want) + sel + after.slice(want); a = s - want; }
-    else { nv = before + star + sel + star + after; a = s + want; }
-  }
-  z = a + sel.length;
-  ta.value = nv; ta.focus(); ta.setSelectionRange(a, z);
-  ta.dispatchEvent(new Event('input', { bubbles: true }));
+/* ---------- text formatting for every text box: you see bold / italic / underline as you type ---------- */
+/* The text is stored with **bold**, *italic* and __underline__ marks (so nothing else in the site changes). The box you type in shows the real look. */
+const mdToHtml = t => fmt(esc(t)).replace(/\n/g, '<br>');
+const FMTCMD = { b: 'bold', i: 'italic', u: 'underline' };
+const taSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+function rteToMd(root){
+  const runs = [];
+  const walk = (n, st) => {
+    if (n.nodeType === 3) {
+      const parts = n.nodeValue.replace(/ /g, ' ').replace(/​/g, '').split('\n');
+      parts.forEach((t, i) => { if (i) runs.push({ br: 1 }); if (t) runs.push({ t, b: st.b, i: st.i, u: st.u }); });
+      return;
+    }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    if (tag === 'BR') { runs.push({ br: 1 }); return; }
+    const x = { ...st }, cs = n.style || {};
+    if (tag === 'B' || tag === 'STRONG' || /bold|^[6-9]00$/.test(cs.fontWeight || '')) x.b = 1;
+    if (tag === 'I' || tag === 'EM' || cs.fontStyle === 'italic') x.i = 1;
+    if (tag === 'U' || /underline/.test((cs.textDecoration || '') + (cs.textDecorationLine || ''))) x.u = 1;
+    const block = (tag === 'DIV' || tag === 'P' || tag === 'LI') && n !== root;
+    if (block && runs.length && !runs[runs.length - 1].br) runs.push({ br: 1 });
+    n.childNodes.forEach(c => walk(c, x));
+  };
+  walk(root, {});
+  if (runs.length && runs[runs.length - 1].br) runs.pop();   /* the browser's spare line-end mark */
+  const lines = [[]];
+  runs.forEach(r => { if (r.br) lines.push([]); else lines[lines.length - 1].push(r); });
+  return lines.map(line => {
+    const merged = [];
+    line.forEach(r => { const l = merged[merged.length - 1]; if (l && !!l.b === !!r.b && !!l.i === !!r.i && !!l.u === !!r.u) l.t += r.t; else merged.push({ ...r }); });
+    return merged.map(r => {
+      if (!(r.b || r.i || r.u)) return r.t;
+      const m = r.t.match(/^(\s*)([\s\S]*?)(\s*)$/);
+      if (!m[2]) return r.t;
+      const o = (r.u ? '__' : '') + (r.b ? '**' : '') + (r.i ? '*' : ''), c = (r.i ? '*' : '') + (r.b ? '**' : '') + (r.u ? '__' : '');
+      return m[1] + o + m[2] + c + m[3];
+    }).join('');
+  }).join('\n');
 }
+const FMTBAR = '<div class="fmtbar"><button type="button" data-a="fmt" data-m="b" title="Bold (Ctrl+B)"><b>B</b><small>CTRL+B</small></button><button type="button" data-a="fmt" data-m="i" title="Italic (Ctrl+I)"><i>I</i><small>CTRL+I</small></button><button type="button" data-a="fmt" data-m="u" title="Underline (Ctrl+U)"><u>U</u><small>CTRL+U</small></button><span>select words, then tap (or use the shortcut keys)</span></div>';
 function enhance(scope){
   scope.querySelectorAll('textarea:not([data-tb]):not([data-nofmt])').forEach(t => {
     t.dataset.tb = '1';
-    t.insertAdjacentHTML('beforebegin', '<div class="fmtbar"><button type="button" data-a="fmt" data-m="b" title="Bold"><b>B</b></button><button type="button" data-a="fmt" data-m="i" title="Italic"><i>I</i></button><button type="button" data-a="fmt" data-m="u" title="Underline"><u>U</u></button><span>select words, then tap</span></div>');
+    t.insertAdjacentHTML('beforebegin', FMTBAR);
+    const r = document.createElement('div');
+    r.className = 'rte'; r.contentEditable = 'true'; r.setAttribute('role', 'textbox'); r.setAttribute('aria-multiline', 'true');
+    r.dataset.ph = t.getAttribute('placeholder') || ''; if (t.style.minHeight) r.style.minHeight = t.style.minHeight;
+    r.innerHTML = mdToHtml(t.value);
+    t.before(r);
+    const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    /* when other code sets the hidden box's text (a draft coming back, a form clearing), the visible box follows */
+    Object.defineProperty(t, 'value', { configurable: true, get(){ return d.get.call(this); }, set(v){ d.set.call(this, v); r.innerHTML = mdToHtml(this.value); } });
+    const rs = t.form; if (rs && !rs._rteReset) { rs._rteReset = 1; rs.addEventListener('reset', () => setTimeout(() => rs.querySelectorAll('textarea[data-tb]').forEach(x => { x.previousElementSibling.innerHTML = mdToHtml(x.value); }), 0)); }
   });
 }
+function rteFmt(r, m){
+  r.focus();
+  if (r._rng) { const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r._rng); }
+  document.execCommand(FMTCMD[m]);
+}
+document.addEventListener('selectionchange', () => {
+  const sel = getSelection(); if (!sel || !sel.rangeCount) return;
+  const n = sel.anchorNode, r = n && (n.nodeType === 1 ? n : n.parentElement)?.closest?.('.rte'); if (!r) return;
+  r._rng = sel.getRangeAt(0).cloneRange(); fmtState(r);
+});
+function fmtState(r){ r.previousElementSibling?.querySelectorAll('button[data-m]').forEach(b => { let on = false; try { on = document.queryCommandState(FMTCMD[b.dataset.m]); } catch(e) {} b.classList.toggle('on', on); }); }
+/* tapping B / I / U must not take the cursor out of the text box */
+['pointerdown', 'mousedown'].forEach(ev => document.addEventListener(ev, e => { if (e.target.closest?.('.fmtbar button')) e.preventDefault(); }));
+document.addEventListener('paste', e => {
+  const r = e.target.closest?.('.rte'); if (!r) return;
+  e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain'));
+});
+document.addEventListener('beforeinput', e => {
+  if (e.inputType === 'insertParagraph' && e.target.closest?.('.rte')) { e.preventDefault(); document.execCommand('insertLineBreak'); }
+});
 
 /* ---------- sub report (feedback) helpers ---------- */
 const concernRow = () => `<div class="crow"><input class="cs" placeholder="Student name" maxlength="60"><textarea class="cn" data-nofmt placeholder="What happened, and what did you do?" style="min-height:64px"></textarea><button type="button" class="grey" data-a="fbrmrow" data-nobusy>Remove</button></div>`;
@@ -575,7 +636,7 @@ function showAlert(msg, tab = 'feedback'){
   el.innerHTML = '<span>📝 ' + esc(msg) + '</span><button data-a="openfb" data-k="' + tab + '">View</button><button class="ghost" data-a="closealert">✕</button>';
   el.classList.add('show');
 }
-function stopFbWatch(){ watchers.forEach(u => { try { u(); } catch(e) {} }); watchers = []; S.fbNew = 0; S.penNew = 0; S.payNew = 0; document.getElementById('alert').classList.remove('show'); }
+function stopFbWatch(){ stopSubChat(); watchers.forEach(u => { try { u(); } catch(e) {} }); watchers = []; S.fbNew = 0; S.chatNew = 0; S.penNew = 0; S.payNew = 0; document.getElementById('alert').classList.remove('show'); }
 function startFbWatch(){
   stopFbWatch();
   let first = true;
@@ -589,7 +650,48 @@ function startFbWatch(){
     }
     first = false;
   }, err => console.error('feedback watch', err)));
+  /* unread chat messages from subs */
+  let firstC = true;
+  watchers.push(onSnapshot(query(collection(db, 'messages'), where('tid', '==', S.tid), where('from', '==', 'sub'), where('read', '==', false)), snap => {
+    S.chatNew = S.tab === 'chat' ? 0 : snap.size; updateBadge();
+    const added = snap.docChanges().filter(c => c.type === 'added' && !c.doc.metadata.hasPendingWrites);
+    if (S.tab === 'chat' && S.role === 'teacher') { if (snap.size) refreshThreads(); }
+    else if (!firstC) added.forEach(c => showAlert('Message from ' + (c.doc.data().subName || 'a sub'), 'chat'));
+    else if (snap.size) showAlert(snap.size + ' unread message' + (snap.size > 1 ? 's' : '') + ' from subs', 'chat');
+    firstC = false;
+  }, err => console.error('chat watch', err)));
 }
+/* ---------- sub chat ---------- */
+const tsOf = m => m.createdAt?.seconds || Date.now() / 1000;
+const msgHtml = m => {
+  const mineMsg = S.role === 'sub' ? m.from === 'sub' : m.from === 'teacher';
+  return `<div class="bub ${mineMsg ? 'mine' : ''}"><div class="txt">${linkify(m.text || '')}</div><small>${new Date(tsOf(m) * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small></div>`;
+};
+const sortMsgs = list => list.sort((a, b) => tsOf(a) - tsOf(b));
+function fillMsgs(el, list){ const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 60 || !el.children.length; el.innerHTML = sortMsgs(list).map(msgHtml).join(''); if (atEnd) el.scrollTop = el.scrollHeight; }
+/* teacher: redraw every conversation from fresh data and mark the sub's messages as read */
+async function refreshThreads(){
+  if (S.role !== 'teacher' || S.tab !== 'chat') return;
+  const snap = await getDocs(byTid('messages')), all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const boxes = [...document.querySelectorAll('.msgs[data-sid]')];
+  if (all.some(m => !boxes.some(b => b.dataset.sid === m.sid))) { show(); return; }
+  boxes.forEach(b => fillMsgs(b, all.filter(m => m.sid === b.dataset.sid)));
+  all.filter(m => m.from === 'sub' && !m.read).forEach(m => updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {}));
+  S.chatNew = 0; updateBadge();
+}
+/* a free phone alert through ntfy.sh: it only says "new message", never the words themselves */
+async function ntfyPush(topic, title, message){
+  const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic, title, message, tags: ['speech_balloon'], click: location.origin }) });
+  if (!r.ok) throw new Error('ntfy ' + r.status);
+}
+function startSubChat(){
+  const el = document.getElementById('chatlist'); if (!el || S.chatUnsub) return;
+  S.chatUnsub = onSnapshot(query(collection(db, 'messages'), where('tid', '==', S.tid), where('sid', '==', S.profile.sid)), snap => {
+    const box = document.getElementById('chatlist'); if (!box) return;
+    fillMsgs(box, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, err => console.error('chat', err));
+}
+function stopSubChat(){ if (S.chatUnsub) { try { S.chatUnsub(); } catch(e) {} S.chatUnsub = null; } }
 function startAdminWatch(){
   stopFbWatch();
   let f1 = true, f2 = true;
@@ -774,6 +876,19 @@ function renderLogin(){
     </div></div>`;
 }
 const FORMS = {
+  async chatsend(f){
+    const inp = f.querySelector('input'), text = inp.value.trim(); if (!text) return;
+    const base = { tid: S.tid, text: text.slice(0, 1000), createdAt: serverTimestamp() };
+    if (S.role === 'sub') {
+      await addDoc(collection(db, 'messages'), { ...base, sid: S.profile.sid, subName: S.profile.name, from: 'sub', read: false });
+      inp.value = '';
+      const tp = S.chatPrefs?.topic;
+      if (tp && Date.now() - (S.lastPush || 0) > 30000) { S.lastPush = Date.now(); ntfyPush(tp, 'Class chat', 'New message from ' + S.profile.name + '. Open the class website to read it.').catch(e => console.warn('push', e)); }
+    } else {
+      await addDoc(collection(db, 'messages'), { ...base, sid: f.dataset.sid, subName: f.dataset.name, from: 'teacher', read: true });
+      inp.value = ''; await refreshThreads();
+    }
+  },
   async code(f){
     const raw = f.querySelector('#code').value, c = normCode(raw);
     S.loginMsg = ''; S.loginNote = ''; S.loginWhich = 'code'; S.fresh = true; S.keep = { code: raw };
@@ -897,6 +1012,26 @@ const FORMS = {
 };
 
 /* ---------- collapsible boxes (class info + day plan) ---------- */
+/* ---------- remembered through a refresh: which boxes are open, and which tab you are on ---------- */
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch(e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} };
+const OPEN_KEY = 'classroom-open', VIEW_KEY = 'classroom-view';
+const openCtx = c => (S.user?.uid || '') + '|' + (S.tid || '') + '|' + c;
+const getOpen = c => lsGet(OPEN_KEY, {})[openCtx(c)] || [];
+function setOpen(c, arr){
+  const all = lsGet(OPEN_KEY, {}), k = openCtx(c); delete all[k]; if (arr.length) all[k] = arr;
+  const keys = Object.keys(all); if (keys.length > 80) keys.slice(0, keys.length - 80).forEach(x => delete all[x]);
+  lsSet(OPEN_KEY, all);
+}
+const edCtx = k => k === 'info' ? 'ed-info' : 'ed-plan-' + (S.edDate || S.planDate);
+const persistEd = k => setOpen(edCtx(k), ED[k].map((b, i) => b.open ? i : -1).filter(i => i >= 0));
+function applyOpen(scope){
+  const got = {};
+  scope.querySelectorAll('details.box[data-ctx]').forEach(d => { const c = d.dataset.ctx; got[c] = got[c] || getOpen(c); d.open = got[c].includes(+d.dataset.n); });
+}
+function saveView(){ if (S.user && S.role && S.tab) lsSet(VIEW_KEY, { uid: S.user.uid, role: S.role, tab: S.tab, viewing: S.viewing, planDate: S.planDate }); }
+const loadView = uid => { const v = lsGet(VIEW_KEY, null); return v && v.uid === uid ? v : null; };
+
 const ED = { info: [], plan: [], planSubs: [], trash: { info: [], plan: [] } };
 const blankBox = (title = '') => ({ title, text: '', links: [], files: [], open: false });
 function normItems(d, legacyTitle){
@@ -922,14 +1057,16 @@ function editorHtml(k){
     + `<button data-a="edadd" data-k="${k}">＋ Add box</button><button class="ok" data-a="edsave" data-k="${k}">Save</button>`;
 }
 const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
-const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); scheduleSave(k); } };
-function boxesView(items, emptyMsg){
+const redraw = k => { const el = document.getElementById('ed-' + k); if (el) { el.innerHTML = editorHtml(k); enhance(el); persistEd(k); scheduleSave(k); } };
+function boxesView(items, emptyMsg, ctx){
   const list = items.filter(b => b.title || b.text || b.links.length || b.files.length);
   if (!list.length) return `<div class="card muted">${emptyMsg}</div>`;
-  return list.map(b => `<details class="box"><summary>${esc(b.title || 'Untitled')}</summary>
-    <div class="txt">${linkify(b.text)}</div>
+  return list.map((b, n) => {
+    const links = b.links.filter(l => safeUrl(l.url)), hasText = !!b.text.trim(), has = hasText || links.length || b.files.some(f => safeUrl(f.url));
+    return `<details class="box" data-ctx="${esc(ctx)}" data-n="${n}"><summary>${esc(b.title || 'Untitled')}</summary>
+    ${hasText ? `<div class="txt">${linkify(b.text)}</div>` : ''}${has ? '' : '<div class="nothing">Nothing to show</div>'}
     ${filesHtml(b.files)}
-    ${b.links.filter(l => safeUrl(l.url)).map(l => `<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener">🖨️ ${esc(l.label || 'Open to print')}</a>`).join('')}</details>`).join('');
+    ${links.map(l => `<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener">🖨️ ${esc(l.label || 'Open to print')}</a>`).join('')}</details>`; }).join('');
 }
 
 /* ---------- actions (buttons) ---------- */
@@ -965,14 +1102,14 @@ async function purgePeople(ids){
   for (const id of ids) {
     const u = (await getDoc(doc(db, 'users', id))).data(); if (!u) continue;
     const mine = c => query(collection(db, c), where('tid', '==', S.tid), where('sid', '==', u.sid));
-    await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests'));
+    await delAll(mine('users')); await delAll(mine('done')); await delAll(mine('requests')); await delAll(mine('messages'));
     await deleteDoc(doc(db, 'users', id)).catch(() => {});
   }
 }
 /* remove a whole teacher: their people and everything they made (payment records are kept) */
 async function purgeTeacher(tid){
-  for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback']) await delAll(query(collection(db, c), where('tid', '==', tid)));
-  await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid));
+  for (const c of ['users', 'assignments', 'done', 'requests', 'subplans', 'feedback', 'messages']) await delAll(query(collection(db, c), where('tid', '==', tid)));
+  await deleteDoc(doc(db, 'board', tid)); await deleteDoc(doc(db, 'subinfo', tid)); await deleteDoc(doc(db, 'prefs', tid));
   await deleteDoc(doc(db, 'users', tid));
 }
 const ACTIONS = {
@@ -989,6 +1126,25 @@ const ACTIONS = {
     S.tab = tabsFor()[0][0]; S.shown = null; S.fbSent = false; S.cache = {};
     if (S.role === 'teacher') startFbWatch(); else startAdminWatch();
     show();
+  },
+  chattoggle: async () => {
+    const ref = doc(db, 'prefs', S.tid), cur = (await getDoc(ref)).data() || {}, on = !cur.chatOn;
+    const topic = cur.topic || 'cp-' + [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join('');
+    await setDoc(ref, { tid: S.tid, chatOn: on, topic }); toast(on ? 'Chat is on' : 'Chat is off'); show();
+  },
+  chatcopy: async () => { const t = document.querySelector('.topic')?.textContent || ''; try { await navigator.clipboard.writeText(t); toast('Copied'); } catch(e) { toast(t); } },
+  chattest: async () => {
+    const t = (await getDoc(doc(db, 'prefs', S.tid))).data()?.topic; if (!t) return;
+    try { await ntfyPush(t, 'Class chat', 'This is a test. Alerts are working.'); toast('Sent. Your phone should buzz in a moment.', 4000); }
+    catch(e) { toast('Could not reach ntfy.sh from here. Check your internet or try another network.', 4500); }
+  },
+  chatnewtopic: async () => {
+    if (!confirm('Make a new topic name? You must subscribe to the new name in the ntfy app.')) return;
+    await updateDoc(doc(db, 'prefs', S.tid), { topic: 'cp-' + [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join('') }); show();
+  },
+  chatclear: async b => {
+    if (!confirm('Delete the whole conversation with ' + (b.dataset.name || 'this sub') + '?')) return;
+    await delAll(query(collection(db, 'messages'), where('tid', '==', S.tid), where('sid', '==', b.dataset.sid))); show();
   },
   recheck: async () => { await enter(auth.currentUser); if (S.locked === 'pending') toast('Still waiting for approval'); },
   copyref: async () => { const t = S.profile?.ref || ''; try { await navigator.clipboard.writeText(t); toast('Copied ' + t); } catch(e) { toast('Your number is ' + t); } },
@@ -1094,7 +1250,7 @@ const ACTIONS = {
     await deleteDoc(ref); show();
   },
   loadplan: b => { S.planDate = b.dataset.d; show(); },
-  fmt: b => { const ta = b.closest('.fmtbar')?.nextElementSibling; if (ta) applyFmt(ta, b.dataset.m); },
+  fmt: b => { const r = b.closest('.fmtbar')?.nextElementSibling; if (r && r.classList.contains('rte')) rteFmt(r, b.dataset.m); },
   openfb: b => { document.getElementById('alert').classList.remove('show'); S.tab = b?.dataset?.k || 'feedback'; show(); },
   closealert: () => document.getElementById('alert').classList.remove('show'),
   fbread: b => updateDoc(doc(db, 'feedback', b.dataset.id), { status: 'read' }),
@@ -1176,9 +1332,9 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   const t = e.target;
-  if (!(e.ctrlKey || e.metaKey) || t.tagName !== 'TEXTAREA' || t.dataset.nofmt !== undefined) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || !t.classList?.contains('rte')) return;
   const m = { b: 'b', i: 'i', u: 'u' }[(e.key || '').toLowerCase()]; if (!m) return;
-  e.preventDefault(); applyFmt(t, m);
+  e.preventDefault(); document.execCommand(FMTCMD[m]);
 });
 document.addEventListener('submit', e => {
   const f = e.target; if (!f.dataset.form) return;
@@ -1189,7 +1345,14 @@ document.addEventListener('submit', e => {
   (sb ? busy(sb, p) : p).catch(err => toast(friendly(err)));
 });
 document.addEventListener('input', e => {
-  const t = e.target; S.dirty = true;
+  const t = e.target;
+  if (t.classList?.contains('rte')) {   /* typing in a formatted box: keep the hidden text box (what is saved) in step, then carry on as usual */
+    const ta = t.nextElementSibling, md = rteToMd(t);
+    if (!md && t.innerHTML) t.innerHTML = '';
+    fmtState(t);
+    taSet.call(ta, md); ta.dispatchEvent(new Event('input', { bubbles: true })); return;
+  }
+  S.dirty = true;
   if (t.closest('.login')) { t.classList.remove('bad'); const er = root.querySelector('.login .err'); if (er) er.textContent = ''; }   /* typing again clears the error */
   if (t.id === 'btext') { S.boardText = t.value; S.boardTid = S.tid; scheduleSave('board'); return; }
   const df = t.closest('form[data-form]'); if (df && DRAFTS[df.dataset.form]) saveDraft(df);
@@ -1200,8 +1363,10 @@ document.addEventListener('input', e => {
   scheduleSave(t.dataset.ed);
 });
 document.addEventListener('toggle', e => {
-  const d = e.target; if (!d.dataset || !d.dataset.k) return;
-  const b = ED[d.dataset.k]?.[+d.dataset.i]; if (b) b.open = d.open;
+  const d = e.target; if (!d.dataset) return;
+  if (d.dataset.ctx) { const c = d.dataset.ctx; setOpen(c, [...document.querySelectorAll('details.box[data-ctx]')].filter(x => x.dataset.ctx === c && x.open).map(x => +x.dataset.n)); return; }
+  if (!d.dataset.k) return;
+  const b = ED[d.dataset.k]?.[+d.dataset.i]; if (b) { b.open = d.open; persistEd(d.dataset.k); }
 }, true);
 document.addEventListener('change', e => {
   if (e.target.id === 'selall') document.querySelectorAll('.bsel').forEach(x => { x.checked = e.target.checked; });
@@ -1299,8 +1464,8 @@ function restoreDrafts(){
 /* ---------- shell ---------- */
 const TABS = {
   student: [['home', '🏠 Home'], ['work', '📝 My work'], ['print', '🖨️ Print']],
-  teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['feedback', '💬 Feedback']],
-  sub: [['day', '📋 Day plan'], ['info', 'ℹ️ Class info'], ['feedback', '📝 Feedback']]
+  teacher: [['students', '👩‍🎓 Students'], ['work', '📝 Work'], ['print', '🖨️ Print'], ['board', '📌 Board'], ['sub', '🧑‍🏫 Sub'], ['chat', '✉️ Chat'], ['feedback', '💬 Feedback']],
+  sub: [['day', '📋 Day plan'], ['info', 'ℹ️ Class info'], ['chat', '✉️ Chat'], ['feedback', '📝 Feedback']]
 };
 function tabsFor(){
   if (S.role === 'admin') return [['teachers', '🧑‍🏫 Teachers'], ['pay', '💳 Payments'], ['settings', '⚙️ Settings']];
@@ -1310,7 +1475,7 @@ function tabsFor(){
   }
   return TABS[S.role];
 }
-const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
+const navBadge = k => S.role === 'teacher' ? (k === 'feedback' ? S.fbNew : k === 'chat' ? S.chatNew : 0) : S.role === 'admin' ? (k === 'teachers' ? S.penNew : k === 'pay' ? S.payNew : 0) : 0;
 const navInner = (k, l) => { const i = l.indexOf(' '); return `<span class="ni">${l.slice(0, i)}</span>${esc(l.slice(i + 1))}${navBadge(k) ? `<span class="badge">${navBadge(k)}</span>` : ''}`; };
 const FOOT = '<footer class="copy">© 2026 Mr. D. All rights reserved.</footer>';
 function syncNavH(){ const n = root.querySelector('nav'); if (n) document.documentElement.style.setProperty('--navh', n.offsetHeight + 'px'); }
@@ -1329,12 +1494,15 @@ function shell(content){
   }
   syncNavH();
   enhance(root);
+  applyOpen(root);
   if (!S.pend.size) setSave('idle');
   restoreDrafts();
 }
 async function show(){
+  saveView();
   if (S.pend.size || flushing) await flushSaves();   /* never reload a page over text that is still waiting to be saved */
   const my = ++S.rid, key = S.role + ':' + S.tab, fresh = S.shown !== key;
+  if (key !== 'sub:chat') stopSubChat();
   /* opening a tab again shows what it had last time at once, then quietly swaps in the fresh data */
   const cached = fresh && CACHEABLE.has(key) ? S.cache[key] : undefined;
   const animate = () => { const m = root.querySelector('main'); m.classList.remove('view-in'); void m.offsetWidth; m.classList.add('view-in'); clearTimeout(S.vt); S.vt = setTimeout(() => m.classList.remove('view-in'), 900); };
@@ -1352,6 +1520,7 @@ async function show(){
   shell(html);
   S.shown = key;
   if (fresh) animate();
+  if (key === 'sub:chat') { stopSubChat(); startSubChat(); }
 }
 /* tabs that only show saved data (the editors and blank forms are always loaded fresh) */
 const CACHEABLE = new Set(['student:home', 'student:work', 'student:print', 'teacher:students', 'teacher:work', 'teacher:print', 'teacher:feedback', 'teacher:board', 'teacher:plan', 'sub:day', 'sub:info', 'admin:teachers', 'admin:pay', 'admin:settings']);
@@ -1469,6 +1638,29 @@ const VIEWS = {
     return `<h2>Classroom board</h2><div class="card"><p class="muted">Everyone sees this on their Home page.</p><form data-form="board">
       <textarea id="btext" style="min-height:220px" placeholder="Today we are…&#10;Reminders…">${esc(b.exists() ? b.data().text : '')}</textarea><button>Save</button></form></div>`;
   },
+  'teacher:chat': async () => {
+    const [pf, ms, subs] = await Promise.all([getDoc(doc(db, 'prefs', S.tid)), getDocs(byTid('messages')), getUsers('sub', true)]);
+    const pr = pf.exists() ? pf.data() : {}, on = !!pr.chatOn;
+    const all = ms.docs.map(d => ({ id: d.id, ...d.data() }));
+    const bySid = {}; all.forEach(m => { (bySid[m.sid] = bySid[m.sid] || []).push(m); });
+    const name = sid => (subs.find(u => u.sid === sid) || {}).name || (bySid[sid].find(m => m.subName) || {}).subName || 'Sub';
+    const sids = Object.keys(bySid).sort((a, b) => Math.max(...bySid[b].map(tsOf)) - Math.max(...bySid[a].map(tsOf)));
+    all.filter(m => m.from === 'sub' && !m.read).forEach(m => updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {}));
+    S.chatNew = 0; updateBadge();
+    return `<h2>Chat with subs</h2>
+      <div class="card"><h3>${on ? '✅ Chat is on' : 'Chat is off'}</h3>
+        <p class="muted">${on ? 'Subs can write to you from the Chat tab of their portal.' : 'While this is off, the sub\'s Chat tab stays empty.'}</p>
+        <button data-a="chattoggle" class="${on ? 'grey' : 'ok'}">${on ? 'Turn chat off' : 'Turn chat on'}</button></div>
+      ${on && pr.topic ? `<div class="card"><h3>📱 Alerts on your phone (optional)</h3>
+        <ol class="steps"><li>Install the free <b>ntfy</b> app (App Store or Google Play).</li>
+          <li>In the app tap <b>+</b> and subscribe to this topic name:<div class="topic">${esc(pr.topic)}</div><button type="button" class="grey" data-a="chatcopy" data-nobusy>Copy name</button></li>
+          <li>Tap the button below. Your phone should buzz.</li></ol>
+        <button data-a="chattest">Send a test alert</button><button class="grey" data-a="chatnewtopic">New topic name</button>
+        <p class="muted">The alert only says that a message arrived. The words stay inside this website. Keep the topic name private, like a password.</p></div>` : ''}
+      ${sids.map(sid => `<div class="card"><h3>${esc(name(sid))}</h3><div class="msgs" data-sid="${esc(sid)}">${sortMsgs(bySid[sid]).map(msgHtml).join('')}</div>
+        <form data-form="chatsend" data-sid="${esc(sid)}" data-name="${esc(name(sid))}" class="chatform"><input maxlength="1000" placeholder="Write a reply…" aria-label="Reply" required><button>Send</button></form>
+        <button class="grey" data-a="chatclear" data-sid="${esc(sid)}" data-name="${esc(name(sid))}">Delete this conversation</button></div>`).join('') || '<p class="muted">No messages yet.</p>'}`;
+  },
   'teacher:sub': async () => {
     S.planDate = S.planDate || todayStr();
     const [subs, info, plan, all] = await Promise.all([getUsers('sub', true), getDoc(doc(db, 'subinfo', S.tid)), getDoc(doc(db, 'subplans', S.tid + '_' + S.planDate)), getDocs(byTid('subplans'))]);
@@ -1479,6 +1671,8 @@ const VIEWS = {
     ED.info = normItems(info.exists() ? info.data() : null, 'General info');
     if (!ED.info.length) ED.info = [blankBox('Routines'), blankBox('Student information')];
     ED.plan = normItems(plan.exists() ? plan.data() : null, 'Day plan');
+    const oi = getOpen('ed-info'), op = getOpen('ed-plan-' + S.planDate);
+    ED.info.forEach((b, i) => { b.open = oi.includes(i); }); ED.plan.forEach((b, i) => { b.open = op.includes(i); });
     return `<h2>Sub codes</h2><div class="card"><form data-form="addsub"><label>Name or label (e.g. "Mrs. Lee" or "Monday sub")</label>
         <input id="subname" required>
         <label>6-digit code (leave empty for a random one)</label><input id="subcode" inputmode="numeric" maxlength="6" placeholder="optional">
@@ -1589,7 +1783,7 @@ const VIEWS = {
     return `<h2>Day plan</h2>
       ${plans.map(x => `<button class="${x.id === S.planDate ? '' : 'grey'}" data-a="loadplan" data-d="${x.id}">${esc(fmtDay(x.id))}${x.id === t ? ' (today)' : ''}</button>`).join('')}
       <h3 style="margin-top:12px">${esc(fmtDay(p.id))}</h3>
-      ${boxesView(normItems(p, 'Day plan'), 'No details for this day yet. Check Class info.')}`;
+      ${boxesView(normItems(p, 'Day plan'), 'No details for this day yet. Check Class info.', 'day-' + p.id)}`;
   },
   'sub:feedback': async () => {
     if (S.fbSent) return `<div class="card fbdone">
@@ -1621,9 +1815,17 @@ const VIEWS = {
         <button class="fsubmit">Submit report</button>
       </form>`;
   },
+  'sub:chat': async () => {
+    const pf = await getDoc(doc(db, 'prefs', S.tid));
+    if (!pf.exists() || !pf.data().chatOn) { S.chatPrefs = null; return '<h2>Chat</h2><div class="card nothing">Nothing to show</div>'; }
+    S.chatPrefs = pf.data();
+    return `<h2>Chat with the teacher</h2><div class="card"><div class="msgs" id="chatlist"></div>
+      <form data-form="chatsend" class="chatform"><input maxlength="1000" placeholder="Write a message…" aria-label="Message" required><button>Send</button></form>
+      <p class="muted" style="margin:8px 0 0">Your teacher is told when you write. Replies show up here.</p></div>`;
+  },
   'sub:info': async () => {
     const i = await getDoc(doc(db, 'subinfo', S.tid));
-    return `<h2>Class info</h2>${boxesView(normItems(i.exists() ? i.data() : null, 'General info'), 'Nothing here yet.')}`;
+    return `<h2>Class info</h2>${boxesView(normItems(i.exists() ? i.data() : null, 'General info'), 'Nothing here yet.', 'info')}`;
   }
 };
 
@@ -1663,14 +1865,19 @@ async function enter(user){
   else return out('This login has no access.');
   S.profile = p; S.role = p.role;
   if (S.locked === 'pending' || S.locked === 'blocked') { S.fresh = false; stopFbWatch(); renderGate(S.locked); return; }
-  S.tab = tabsFor()[0][0]; S.shown = null;
+  /* a refresh brings you back to the same tab (and, for the owner, the same teacher's class) */
+  const sv = loadView(user.uid);
+  if (sv && p.role === 'admin' && sv.role === 'teacher') { S.role = 'teacher'; if (sv.viewing && sv.viewing.id) { S.viewing = sv.viewing; S.tid = sv.viewing.id; } }
+  const keys = tabsFor().map(t => t[0]);
+  S.tab = sv && sv.role === S.role && keys.includes(sv.tab) ? sv.tab : keys[0]; S.shown = null;
+  if (sv && sv.role === S.role && /^\d{4}-\d\d-\d\d$/.test(sv.planDate || '')) S.planDate = sv.planDate;
   if (S.fresh) { S.fresh = false; if (playWelcome(S.profile.name)) await new Promise(r => setTimeout(r, 190)); }   /* welcome screen covers the switch */
   show();
   if (S.role === 'teacher' && !S.locked) startFbWatch(); else if (S.role === 'admin') startAdminWatch(); else stopFbWatch();
 }
 onAuthStateChanged(auth, async user => {
   if (S.signingUp) return;   /* the sign-up form finishes the job itself */
-  if (!user) { stopFbWatch(); hideIdleWarn(); S.cache = {}; S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
+  if (!user) { try { localStorage.removeItem(VIEW_KEY); } catch(e) {} stopFbWatch(); hideIdleWarn(); S.cache = {}; S.user = null; S.profile = null; S.tid = null; S.isAdmin = false; S.locked = null; S.shown = null; S.idleOut = false; S.fbSent = false; S.loginEnter = true; delete root.dataset.role; renderLogin(); return; }
   if (!S.fresh) {   /* a saved session from an earlier visit: only keep it if it was used in the last 15 minutes */
     const last = store.get();
     if (last && Date.now() - last > IDLE_MS) { S.loginNote = 'You were logged out after 15 minutes of no activity.'; await signOut(auth); return; }
